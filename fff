@@ -1,0 +1,334 @@
+// "use client";
+
+// import Link from "next/link";
+// import { useState, useEffect, useRef } from "react";
+// import Typed from "typed.js";
+// import { Code, Database, Palette, Brain, Star } from "lucide-react";
+// import { useAuth } from "../app/context/AuthContext";
+// import toast from "react-hot-toast";
+
+// interface Product {
+//   _id: number | string;
+//   title: string;
+//   description: string;
+//   price: number;
+//   images?: string[];
+//   quantity?: number;
+// }
+
+// export default function Home() {
+//   const { isLoggedIn } = useAuth();
+//   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
+//   const [loading, setLoading] = useState(false);
+//   const [error, setError] = useState("");
+//   const [page, setPage] = useState(1);
+//   const limit = 3;
+//   const [hasMore, setHasMore] = useState(true);
+//   const typedRef = useRef<HTMLSpanElement>(null);
+
+//   const [categories, setCategories] = useState([
+//     {
+//       icon: <Code className="w-12 h-12 mx-auto text-orange-600 mb-4" />,
+//       title: "Web Development",
+//       desc: "Learn HTML, CSS, JS, React & more",
+//       link: "/categories/web-dev",
+//     },
+//     {
+//       icon: <Database className="w-12 h-12 mx-auto text-blue-600 mb-4" />,
+//       title: "Data Science",
+//       desc: "Master Python, ML & AI tools",
+//       link: "/categories/data-science",
+//     },
+//     {
+//       icon: <Palette className="w-12 h-12 mx-auto text-pink-600 mb-4" />,
+//       title: "UI / UX Design",
+//       desc: "Design beautiful interfaces",
+//       link: "/categories/ui-ux",
+//     },
+//     {
+//       icon: <Brain className="w-12 h-12 mx-auto text-green-600 mb-4" />,
+//       title: "AI & Machine Learning",
+//       desc: "Build intelligent systems",
+//       link: "/categories/ai-ml",
+//     },
+//   ]);
+
+//   const [loadedCategories, setLoadedCategories] = useState(false);
+
+//   async function fetchProducts(currentPage: number) {
+//     setLoading(true);
+//     setError("");
+//     try {
+//       const res = await fetch(
+//         `http://localhost:5000/api/products?limit=${limit}&page=${currentPage}`
+//       );
+//       const json = await res.json();
+
+//       if (res.ok) {
+//         if (Array.isArray(json.data)) {
+//           console.log("Fetched products from backend:", json.data);
+
+//           const mappedData: Product[] = json.data.map((item: any) => ({
+//             _id: item._id,
+//             title: item.title || item.name || "Untitled Product",
+//             description: item.description || "No description available",
+//             price: item.price ? Number(item.price) : 0,
+//             images: item.images || [],
+//             quantity: 1,
+//           }));
+
+//           setFeaturedProducts(
+//             currentPage === 1 ? mappedData : [...featuredProducts, ...mappedData]
+//           );
+
+//           setHasMore(mappedData.length === limit);
+//         } else {
+//           setError("Invalid products data");
+//         }
+//       } else {
+//         setError(json.error || "Failed to fetch products");
+//       }
+//     } catch (e) {
+//       console.error("Fetch error:", e);
+//       setError("Failed to fetch products");
+//     } finally {
+//       setLoading(false);
+//     }
+//   }
+
+//   const loadMoreProducts = () => {
+//     if (!loading && hasMore) setPage((prev) => prev + 1);
+//   };
+
+//   const loadMoreCategories = async () => {
+//     if (loadedCategories) return; // prevent multiple clicks
+//     try {
+//       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/categories`);
+//       const json = await res.json();
+//       const liveCats = (json.data || []).map((cat: any) => ({
+//         icon: <Code className="w-12 h-12 mx-auto text-orange-600 mb-4" />, // same default icon
+//         title: cat.name,
+//         desc: cat.description || "No description",
+//         link: `/categories/${cat.slug || cat._id}`,
+//       }));
+//       setCategories((prev) => [...prev, ...liveCats]);
+//       setLoadedCategories(true);
+//     } catch (err) {
+//       console.error("Error loading categories:", err);
+//     }
+//   };
+
+//   useEffect(() => {
+//     fetchProducts(page);
+//   }, [page]);
+
+//   useEffect(() => {
+//     if (typedRef.current) {
+//       const typed = new Typed(typedRef.current, {
+//         strings: ["Learn.", "Build.", "Grow."],
+//         typeSpeed: 70,
+//         backSpeed: 40,
+//         backDelay: 1500,
+//         loop: true,
+//       });
+//       return () => typed.destroy();
+//     }
+//   }, []);
+
+//   const handleAddToCart = (product: Product) => {
+//     if (!isLoggedIn) {
+//       toast.error("Please login to add items to your cart!");
+//       return;
+//     }
+//     if (typeof window === "undefined") return;
+
+//     const stored = localStorage.getItem("cartItems");
+//     let cart: Product[] = stored ? JSON.parse(stored) : [];
+
+//     const exists = cart.find((item) => item._id === product._id);
+//     if (exists) {
+//       cart = cart.map((item) =>
+//         item._id === product._id
+//           ? { ...item, quantity: (item.quantity || 1) + 1 }
+//           : item
+//       );
+//     } else {
+//       cart.push({ ...product, quantity: 1 });
+//     }
+
+//     localStorage.setItem("cartItems", JSON.stringify(cart));
+//     window.dispatchEvent(new Event("cartUpdated"));
+
+//     toast.success(`${product.title} added to cart!`, {
+//       duration: 3000,
+//       style: {
+//         borderRadius: "8px",
+//         background: "#facc15",
+//         color: "#000",
+//       },
+//     });
+//   };
+
+//   return (
+//     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 dark:text-white transition flex flex-col">
+//       {/* Hero Section */}
+//       <section className="text-center py-20 relative">
+//         <div className="absolute inset-0 bg-gradient-to-r from-orange-100 to-orange-200 -z-10"></div>
+//         <h1 className="text-5xl font-bold mb-4">Welcome to CodeShelf</h1>
+//         <p className="text-xl mb-6">
+//           Discover professional courses and amazing products to boost your career.
+//         </p>
+//         <h2 className="text-2xl font-semibold mb-6">
+//           <span ref={typedRef} className="text-orange-600"></span>
+//         </h2>
+
+//         <div className="flex justify-center gap-4 mt-6">
+//           <Link
+//             href="/courses"
+//             className="relative inline-block px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-lg shadow-md transform transition duration-300 hover:scale-105 hover:from-yellow-500 hover:to-yellow-600 hover:shadow-lg"
+//           >
+//             Get Started
+//             <span className="absolute inset-0 rounded-lg border-2 border-white opacity-0 transition duration-300 hover:opacity-25"></span>
+//           </Link>
+
+//           <Link
+//             href="/products"
+//             className="relative inline-block px-6 py-2.5 text-sm font-semibold text-blue-600 bg-white rounded-lg shadow-sm border-2 border-orange-500 transform transition duration-300 hover:scale-105 hover:bg-orange-50 hover:shadow-md"
+//           >
+//             Explore Courses
+//             <span className="absolute inset-0 rounded-lg opacity-0 transition duration-300 hover:opacity-25"></span>
+//           </Link>
+//         </div>
+//       </section>
+
+//       {/* Categories Section */}
+//       <section className="py-16">
+//         <h2 className="text-3xl font-extrabold text-center mb-10">
+//           Explore Categories
+//         </h2>
+//         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 px-6">
+//           {categories.map((cat, idx) => (
+//             <Link
+//               key={idx}
+//               href={cat.link}
+//               className="block bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 text-center transform-gpu transition-all duration-500 ease-out hover:-translate-y-2 hover:scale-[1.02] hover:shadow-2xl"
+//             >
+//               {cat.icon}
+//               <h3 className="font-extrabold text-lg mb-2 relative group">
+//                 {cat.title}
+//                 <span className="absolute left-0 -bottom-1 w-0 h-0.5 bg-yellow-400 transition-all duration-300 ease-out group-hover:w-full"></span>
+//               </h3>
+//               <p className="text-sm text-gray-600 dark:text-gray-300">
+//                 {cat.desc}
+//               </p>
+//             </Link>
+//           ))}
+//         </div>
+
+//         {!loadedCategories && (
+//           <div className="text-center mt-8">
+//             <button
+//               onClick={loadMoreCategories}
+//               className="px-6 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg"
+//             >
+//               Load More Categories
+//             </button>
+//           </div>
+//         )}
+//       </section>
+
+//       {/* Discount Banner */}
+//       <div className="bg-yellow-400 text-black text-center py-2 font-semibold">
+//         🎉 Summer Sale – Get 30% Off on All Courses!
+//       </div>
+
+//       {/* Featured Products */}
+//       <section className="py-16 container mx-auto px-6">
+//         <h2 className="text-3xl font-extrabold text-center mb-10">
+//           Featured Products
+//         </h2>
+//         {error && <p className="text-red-500 text-center">{error}</p>}
+
+//         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+//           {featuredProducts.map((p) => (
+//             <div
+//               key={p._id}
+//               className="card bg-white dark:bg-gray-800 shadow-lg p-4 rounded-xl flex flex-col transition-all duration-300 ease-in-out hover:-translate-y-2 hover:scale-105 hover:shadow-2xl hover:opacity-95"
+//             >
+//               {p.images && p.images.length > 0 && (
+//                 <img
+//                   src={p.images[0]}
+//                   alt={p.title}
+//                   className="w-full h-40 object-cover rounded-lg mb-4 transition-transform duration-300 hover:scale-105"
+//                 />
+//               )}
+//               <h3 className="font-bold text-lg mb-2 relative group">
+//                 {p.title}
+//                 <span className="absolute left-0 -bottom-1 w-0 h-0.5 bg-yellow-400 transition-all duration-300 ease-in-out group-hover:w-full"></span>
+//               </h3>
+//               <p className="text-gray-600 dark:text-gray-300 mb-2">
+//                 {p.description}
+//               </p>
+
+//               <p className="font-semibold text-lg mb-4">
+//                 ₹{p.price ? p.price.toFixed(2) : "0.00"}
+//               </p>
+
+//               <button
+//                 onClick={() => handleAddToCart(p)}
+//                 className="mt-auto bg-yellow-400 hover:bg-yellow-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-transform duration-300 hover:scale-105"
+//               >
+//                 Buy Now
+//               </button>
+//             </div>
+//           ))}
+//         </div>
+
+//         {hasMore && (
+//           <div className="text-center mt-6">
+//             <button
+//               onClick={loadMoreProducts}
+//               disabled={loading}
+//               className={`relative inline-block px-6 py-2.5 font-semibold text-white rounded-lg shadow-md transition-all duration-150 transform ${
+//                 loading
+//                   ? "bg-gray-400 cursor-not-allowed"
+//                   : "bg-blue-600 hover:bg-blue-700 hover:scale-105 hover:shadow-lg"
+//               }`}
+//             >
+//               {loading ? <span className="animate-pulse">Loading...</span> : "Load More"}
+//             </button>
+//           </div>
+//         )}
+//       </section>
+
+//       {/* Testimonials */}
+//       <section className="py-16 bg-gray-100 dark:bg-gray-900">
+//         <h2 className="text-3xl font-extrabold mb-10 text-center">
+//           💬 What Our Students Say
+//         </h2>
+//         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 px-6">
+//           {[
+//             { name: "Aarav", review: "Amazing courses! Learned React so quickly.", rating: 5 },
+//             { name: "Priya", review: "Great mentors, very supportive and knowledgeable.", rating: 4 },
+//             { name: "Rohan", review: "Best investment I made for my career!", rating: 5 },
+//           ].map((t, idx) => (
+//             <div
+//               key={idx}
+//               className="card bg-white dark:bg-gray-800 shadow-lg p-6 text-center rounded-xl hover:shadow-2xl hover:-translate-y-2 transition"
+//             >
+//               <p className="text-gray-700 dark:text-gray-300 mb-4 italic">
+//                 "{t.review}"
+//               </p>
+//               <div className="flex justify-center mb-2">
+//                 {Array.from({ length: t.rating }).map((_, i) => (
+//                   <Star key={i} className="w-5 h-5 text-yellow-400 fill-yellow-400" />
+//                 ))}
+//               </div>
+//               <h4 className="font-extrabold">{t.name}</h4>
+//             </div>
+//           ))}
+//         </div>
+//       </section>
+//     </div>
+//   );
+// }
