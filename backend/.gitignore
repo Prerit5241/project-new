@@ -1,0 +1,24 @@
+# dependencies
+/node_modules
+package-lock.json
+
+# environment variables
+.env
+
+# logs
+logs
+*.log
+npm-debug.log*
+
+# runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local 
