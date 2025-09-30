@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+/* ========================================
+   Root Variables & Themes
+======================================== */
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+
+  --color-primary: 59, 130, 246;
+  --color-secondary: 139, 92, 246;
+  --color-success: 16, 185, 129;
+  --color-warning: 245, 158, 11;
+  --color-error: 239, 68, 68;
+  --color-info: 14, 165, 233;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
+  --radius-sm: 0.125rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+}
+
+/* ========================================
+   Base Styles
+======================================== */
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  scroll-behavior: smooth;
+}
+
+/* ========================================
+   Line Clamps
+======================================== */
+.line-clamp-1, .line-clamp-2, .line-clamp-3, .line-clamp-4 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.line-clamp-1 { -webkit-line-clamp: 1; line-clamp: 1; }
+.line-clamp-2 { -webkit-line-clamp: 2; line-clamp: 2; }
+.line-clamp-3 { -webkit-line-clamp: 3; line-clamp: 3; }
+.line-clamp-4 { -webkit-line-clamp: 4; line-clamp: 4; }
+
+/* ========================================
+   Scrollbar Styling
+======================================== */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+  transition: background-color 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c1c1c1 #f1f1f1;
+}
+
+/* ========================================
+   Animations
+======================================== */
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes slideInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes bounce {
+  0%, 20%, 53%, 80%, 100% { transform: translate3d(0,0,0); }
+  40%, 43% { transform: translate3d(0,-8px,0); }
+  70% { transform: translate3d(0,-4px,0); }
+  90% { transform: translate3d(0,-2px,0); }
+}
+@keyframes shake {
+  0%,100%{transform:translateX(0);}
+  10%,30%,50%,70%,90%{transform:translateX(-2px);}
+  20%,40%,60%,80%{transform:translateX(2px);}
+}
+@keyframes loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Animation classes */
+.animate-spin { animation: spin 1s linear infinite; }
+.animate-pulse { animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite; }
+.animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+.animate-slide-in { animation: slideIn 0.3s ease-out forwards; }
+.animate-slide-in-right { animation: slideInRight 0.3s ease-out forwards; }
+.animate-slide-up { animation: slideUp 0.4s ease-out forwards; }
+.animate-bounce { animation: bounce 1s infinite; }
+.animate-shake { animation: shake 0.5s ease-in-out; }
+
+/* ========================================
+   Buttons & Cards Hover
+======================================== */
+.btn-hover { transition: all 0.3s cubic-bezier(0.4,0,0.2,1); }
+.btn-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.15); }
+.btn-scale:hover { transform: scale(1.05); }
+.btn-glow:hover { box-shadow: 0 0 20px rgba(59,130,246,0.4); }
+
+.card-hover { transition: all 0.3s cubic-bezier(0.4,0,0.2,1); }
+.card-hover:hover { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
+.card-float:hover { transform: translateY(-8px); box-shadow: 0 25px 50px rgba(0,0,0,0.15); }
+
+/* ========================================
+   Glass Morphism & Gradients
+======================================== */
+.glass { background: rgba(255,255,255,0.25); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border:1px solid rgba(255,255,255,0.18); }
+.glass-dark { background: rgba(0,0,0,0.25); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border:1px solid rgba(255,255,255,0.1); }
+
+.gradient-blue-purple { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+.gradient-blue-purple-hover { background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%); }
+.gradient-orange-pink { background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%); }
+.gradient-green-blue { background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%); }
+.gradient-purple-pink { background: linear-gradient(135deg, #a29bfe 0%, #6c5ce7 100%); }
+
+/* ========================================
+   Focus & Input Styles
+======================================== */
+.focus-ring { transition: all 0.2s cubic-bezier(0.4,0,0.2,1); }
+.focus-ring:focus, .focus-ring-blue:focus { outline:none; box-shadow:0 0 0 2px #3b82f6; }
+.focus-ring:focus-visible { outline:none; box-shadow:0 0 0 2px #3b82f6,0 0 0 4px rgba(59,130,246,0.3); }
+.focus-ring-green:focus { outline:none; box-shadow:0 0 0 2px #10b981; }
+.focus-ring-red:focus { outline:none; box-shadow:0 0 0 2px #ef4444; }
+.focus-ring-purple:focus { outline:none; box-shadow:0 0 0 2px #8b5cf6; }
+
+.input-focus:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,0.1); }
+
+/* ========================================
+   Skeleton & Loading
+======================================== */
+.skeleton { background: linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%); background-size:200% 100%; animation: loading 1.5s infinite; }
+.skeleton-dark { background: linear-gradient(90deg,#374151 25%,#4b5563 50%,#374151 75%); background-size:200% 100%; animation: loading 1.5s infinite; }
