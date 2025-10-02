@@ -2,6 +2,8 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
+import Loading3D from "../../components/Loading3D";
+import { apiHelpers } from "@/lib/api";
 
 const AuthContext = createContext();
 
@@ -44,12 +46,18 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    delete axios.defaults.headers.common["Authorization"];
-    setUser(null);
-    router.push("/login");
+  const logout = async () => {
+    try {
+      await apiHelpers.auth.logout();
+    } catch (error) {
+      console.error("Logout API failed:", error);
+    } finally {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      delete axios.defaults.headers.common["Authorization"];
+      setUser(null);
+      router.push("/login");
+    }
   };
 
   const isAuthenticated = () => !!user;
@@ -58,13 +66,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {loading ? (
-        <div className="flex items-center justify-center h-screen">
-          <p className="text-lg font-semibold text-gray-600">Loading...</p>
-        </div>
-      ) : (
-        children
-      )}
+      {loading ? <Loading3D /> : children}
     </AuthContext.Provider>
   );
 };

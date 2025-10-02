@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getUserRole, getToken, isTokenExpired, removeToken } from "@/utils/auth";
+import { apiHelpers } from "@/lib/api";
 
 const navigationItems = [
   { href: "/admin", label: "Dashboard", icon: "📊" },
@@ -91,8 +92,14 @@ export default function AdminLayout({ children }) {
     };
   }, []);
 
-  const handleLogout = () => {
-    removeToken(); // clear token
+  const handleLogout = async () => {
+    try {
+      await apiHelpers.auth.logout();
+    } catch (error) {
+      console.error("Logout API failed:", error);
+    }
+
+    removeToken();
     router.push("/login");
   };
 

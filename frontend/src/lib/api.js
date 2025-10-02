@@ -44,6 +44,15 @@ export const apiHelpers = {
     getAll: (params = {}) => api.get('/api/products', { params }),
     getById: (id) => api.get(`/api/products/${id}`),
     getFeatured: () => api.get('/api/products/featured'),
+    update: (id, data) => api.put(`/api/products/${id}`, data),
+  },
+
+  // Users
+  users: {
+    list: () => api.get('/api/users/prerit'),
+    create: (data) => api.post('/api/users/prerit', data),
+    update: (id, data) => api.put(`/api/users/${id}`, data),
+    remove: (id) => api.delete(`/api/users/${id}`),
   },
   
   // Categories
@@ -64,6 +73,21 @@ export const apiHelpers = {
     login: (credentials) => api.post('/api/auth/login', credentials),
     register: (userData) => api.post('/api/auth/register', userData),
     verify: () => api.get('/api/auth/verify'),
+    logout: () => api.post('/api/auth/logout'),
+  },
+
+  // Analytics
+  analytics: {
+    getDashboard: () => api.get('/api/analytics/dashboard'),
+    getRevenue: () => api.get('/api/analytics/revenue'),
+    getUsers: () => api.get('/api/analytics/users'),
+    getProducts: () => api.get('/api/analytics/products'),
+  },
+
+  // Activities
+  activities: {
+    getRecent: (params = {}) => api.get('/api/activities/recent', { params }),
+    getStats: (params = {}) => api.get('/api/activities/stats', { params }),
   },
 };
 

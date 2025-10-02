@@ -1,14 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CategoriesAPI } from "../../utils/api";
+import { CategoriesAPI } from "@/utils/api";
+import { toast } from "react-hot-toast";
+
+const INITIAL_FORM = {
+  name: "",
+  description: "",
+  iconName: "",
+  iconClass: ""
+};
 
 export default function CategoriesListPage() {
   const router = useRouter();
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [editCategory, setEditCategory] = useState(null);
+  const [formData, setFormData] = useState(INITIAL_FORM);
+  const [saving, setSaving] = useState(false);
 
   // Fetch categories
   async function loadCategories() {
@@ -34,10 +46,63 @@ export default function CategoriesListPage() {
     try {
       await CategoriesAPI.remove(id);
       setCategories(prev => prev.filter(cat => cat._id !== id));
+      toast.success("Category deleted successfully");
     } catch (e) {
-      alert(e.message || "Failed to delete category");
+      toast.error(e.message || "Failed to delete category");
     }
   }
+
+  const filteredCategories = useMemo(() => {
+    if (!searchTerm.trim()) return categories;
+    const lower = searchTerm.toLowerCase();
+    return categories.filter(cat =>
+      cat.name?.toLowerCase().includes(lower) ||
+      cat.description?.toLowerCase().includes(lower) ||
+      String(cat._id || "").includes(lower)
+    );
+  }, [categories, searchTerm]);
+
+  const openEditModal = (category) => {
+    setEditCategory(category);
+    setFormData({
+      name: category.name || "",
+      description: category.description || "",
+      iconName: category.iconName || "",
+      iconClass: category.iconClass || ""
+    });
+  };
+
+  const closeModal = () => {
+    setEditCategory(null);
+    setFormData(INITIAL_FORM);
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!editCategory) return;
+    if (!formData.name.trim()) {
+      toast.error("Category name is required");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await CategoriesAPI.update(editCategory._id, formData);
+      toast.success("Category updated successfully");
+      const updated = await CategoriesAPI.list();
+      setCategories(Array.isArray(updated.data) ? updated.data : []);
+      closeModal();
+    } catch (e) {
+      toast.error(e.response?.data?.message || e.message || "Failed to update category");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -121,7 +186,7 @@ export default function CategoriesListPage() {
         )}
 
         {/* Empty State */}
-        {!loading && categories.length === 0 && !error && (
+        {!loading && filteredCategories.length === 0 && !error && (
           <div className="p-12 text-center">
             <div className="w-24 h-24 bg-gradient-to-br from-orange-100 to-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -143,7 +208,7 @@ export default function CategoriesListPage() {
         )}
 
         {/* Categories Table */}
-        {!loading && categories.length > 0 && (
+        {!loading && filteredCategories.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -183,7 +248,7 @@ export default function CategoriesListPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {categories.map((cat, index) => (
+                {filteredCategories.map((cat) => (
                   <tr 
                     key={cat._id} 
                     className="hover:bg-gradient-to-r hover:from-orange-50 hover:to-blue-50 transition-all duration-200 group"
@@ -223,7 +288,7 @@ export default function CategoriesListPage() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => router.push(`/admin/categories/${cat._id}`)}
+                          onClick={() => openEditModal(cat)}
                           className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs font-medium rounded-lg transition-all duration-200 hover:scale-105"
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -254,8 +319,8 @@ export default function CategoriesListPage() {
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
             <div className="flex items-center justify-between text-sm text-gray-700">
               <div>
-                Showing <span className="font-semibold">1</span> to <span className="font-semibold">{categories.length}</span> of{' '}
-                <span className="font-semibold">{categories.length}</span> results
+                Showing <span className="font-semibold">1</span> to <span className="font-semibold">{filteredCategories.length}</span> of{' '}
+                <span className="font-semibold">{filteredCategories.length}</span> results
               </div>
               <div className="flex items-center gap-2">
                 <button className="px-3 py-1 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200 text-xs font-medium">
@@ -272,6 +337,117 @@ export default function CategoriesListPage() {
           </div>
         )}
       </div>
+
+      {editCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="relative w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl">
+            <button
+              onClick={closeModal}
+              className="absolute right-4 top-4 text-gray-400 transition hover:text-gray-600"
+            >
+              <span className="sr-only">Close</span>
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Edit Category</h2>
+              <p className="text-sm text-gray-500">Update the category details below and save to apply changes.</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Name</label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    placeholder="e.g. Development"
+                    disabled={saving}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Icon Name</label>
+                  <input
+                    type="text"
+                    name="iconName"
+                    value={formData.iconName}
+                    onChange={handleInputChange}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    placeholder="e.g. heroicons-outline:code"
+                    disabled={saving}
+                  />
+                  <p className="mt-1 text-xs text-gray-400">Optional: used for displaying custom icons.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Icon Class</label>
+                  <input
+                    type="text"
+                    name="iconClass"
+                    value={formData.iconClass}
+                    onChange={handleInputChange}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    placeholder="e.g. text-blue-500"
+                    disabled={saving}
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700">Description</label>
+                  <textarea
+                    name="description"
+                    value={formData.description}
+                    onChange={handleInputChange}
+                    rows="4"
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    placeholder="Describe what this category covers"
+                    disabled={saving}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                      </svg>
+                      Saving...
+                    </span>
+                  ) : (
+                    <>
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                      </svg>
+                      Save Changes
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

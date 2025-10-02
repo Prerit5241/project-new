@@ -2,7 +2,18 @@ import axios, { AxiosError, AxiosResponse } from 'axios';
 import { ApiResponse } from '@/types';
 
 // API Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const resolveDefaultBaseUrl = () => {
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:5000`;
+  }
+
+  return 'http://localhost:5000';
+};
+
+const API_BASE_URL = resolveDefaultBaseUrl();
 
 // Create axios instance
 export const api = axios.create({
@@ -152,15 +163,138 @@ export const apiMethods = {
 
   // Instructors
   getInstructors: () =>
-    api.get<ApiResponse<any[]>>('/api/instructors'),
+    api.get<ApiResponse<any[]>>('/api/instructor'),
 
   // Analytics
   getAnalytics: () =>
     api.get<ApiResponse<any>>('/api/analytics'),
-
   // Activities
   getActivities: () =>
     api.get<ApiResponse<any[]>>('/api/activities'),
+};
+
+type CategoryPayload = {
+  name: string;
+  description?: string;
+  iconName?: string;
+  iconClass?: string;
+};
+
+export const CategoriesAPI = {
+  async list() {
+    const response = await api.get<ApiResponse<any[]>>('/api/categories');
+    return response.data;
+  },
+  async get(id: string | number) {
+    const response = await api.get<ApiResponse<any>>(`/api/categories/${id}`);
+    return response.data;
+  },
+  async create(payload: CategoryPayload) {
+    const response = await api.post<ApiResponse<any>>('/api/categories', payload);
+    return response.data;
+  },
+  async update(id: string | number, payload: Partial<CategoryPayload>) {
+    const response = await api.put<ApiResponse<any>>(`/api/categories/${id}`, payload);
+    return response.data;
+  },
+  async remove(id: string | number) {
+    await api.delete<ApiResponse<any>>(`/api/categories/${id}`);
+  },
+};
+
+type SubCategoryPayload = {
+  name: string;
+  category: number | string;
+  description?: string;
+};
+
+export const SubCategoriesAPI = {
+  async list(params?: any) {
+    const response = await api.get<ApiResponse<any>>('/api/subcategories', { params });
+    return response.data;
+  },
+  async create(payload: SubCategoryPayload) {
+    const response = await api.post<ApiResponse<any>>('/api/subcategories', payload);
+    return response.data;
+  },
+  async update(id: string | number, payload: Partial<SubCategoryPayload>) {
+    const response = await api.put<ApiResponse<any>>(`/api/subcategories/${id}`, payload);
+    return response.data;
+  },
+  async remove(id: string | number) {
+    const response = await api.delete<ApiResponse<any>>(`/api/subcategories/${id}`);
+    return response.data;
+  },
+};
+
+type CoursePayload = {
+  title: string;
+  description: string;
+  category: number | string;
+  price?: number;
+  duration?: number;
+  level?: string;
+  status?: string;
+  imageUrl?: string;
+  instructor?: number | string;
+};
+
+export const CoursesAPI = {
+  async list() {
+    const response = await api.get<ApiResponse<any[]>>('/api/courses');
+    return response.data;
+  },
+  async get(id: string | number) {
+    const response = await api.get<ApiResponse<any>>(`/api/courses/${id}`);
+    return response.data;
+  },
+  async create(payload: CoursePayload) {
+    const response = await api.post<ApiResponse<any>>('/api/courses', payload);
+    return response.data;
+  },
+  async update(id: string | number, payload: Partial<CoursePayload>) {
+    const response = await api.put<ApiResponse<any>>(`/api/courses/${id}`, payload);
+    return response.data;
+  },
+  async remove(id: string | number) {
+    const response = await api.delete<ApiResponse<any>>(`/api/courses/${id}`);
+    return response.data;
+  },
+};
+
+type ProductPayload = {
+  title: string;
+  description: string;
+  price: number;
+  category: number | string;
+  subCategory?: number | string;
+  images?: string[];
+  stock?: number;
+  brand?: string;
+  featured?: boolean;
+};
+
+export const ProductsAPI = {
+  async list(params?: any) {
+    const response = await api.get<ApiResponse<any>>('/api/products', { params });
+    return response.data;
+  },
+  async get(id: string | number) {
+    const response = await api.get<ApiResponse<any>>(`/api/products/${id}`);
+    return response.data;
+  },
+  async create(payload: ProductPayload) {
+    const response = await api.post<ApiResponse<any>>('/api/products', payload);
+    return response.data;
+  },
+  async update(id: string | number, payload: Partial<ProductPayload>) {
+    const response = await api.put<ApiResponse<any>>(`/api/products/${id}`, payload);
+    return response.data;
+  },
+  async remove(id: string | number) {
+    const response = await api.delete<ApiResponse<any>>(`/api/products/${id}`);
+    return response.data;
+  },
 };
 
 // Error handling utility

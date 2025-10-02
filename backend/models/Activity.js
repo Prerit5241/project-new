@@ -15,7 +15,7 @@ const ActivitySchema = new mongoose.Schema({
   userRole:  { type:String, enum:["student","instructor","admin","system"], default:"student" },
 
   /* CLASSIFICATION */
-  type:   { type:String, required:true, enum:[ /* …list unchanged… */ ] },
+  type:   { type:String, required:true },
   action: String,
   message:{ type:String, required:true },
 

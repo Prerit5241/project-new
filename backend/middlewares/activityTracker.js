@@ -53,6 +53,18 @@ const ActivityTracker = {
     );
   },
 
+  async logUserLogout(user, req) {
+    return this.logActivity(
+      'user_logout',
+      user._id || user.id,
+      user.name || user.email,
+      user.role || 'student',
+      `${user.name || user.email} logged out`,
+      {},
+      req
+    );
+  },
+
   async logSearch(query, userId, userName, req) {
     return this.logActivity(
       'search',

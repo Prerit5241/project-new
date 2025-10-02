@@ -437,8 +437,7 @@ router.post('/logout', authenticateToken, async (req, res) => {
     
     if (user) {
       console.log('✅ Logging activity for user:', user.email);
-      
-      // Safe logout logging
+
       try {
         if (ActivityTracker && typeof ActivityTracker.logUserLogout === 'function') {
           await ActivityTracker.logUserLogout(user, req);
@@ -449,11 +448,8 @@ router.post('/logout', authenticateToken, async (req, res) => {
             userName: user.name,
             userRole: user.role,
             type: 'user_logout',
-            message: `User logged out: ${user.email}`,
-            details: { 
-              ipAddress: req.ip || req.connection.remoteAddress,
-              userAgent: req.get('User-Agent')
-            },
+            message: `${user.name || user.email} logged out`,
+            details: {},
             severity: 'low',
             ipAddress: req.ip || req.connection.remoteAddress,
             userAgent: req.get('User-Agent')
@@ -462,7 +458,7 @@ router.post('/logout', authenticateToken, async (req, res) => {
       } catch (logError) {
         console.log('Failed to log logout:', logError.message);
       }
-      
+
       console.log(`✅ ${user.role || 'student'} logout successful:`, user.name || user.email);
     }
     

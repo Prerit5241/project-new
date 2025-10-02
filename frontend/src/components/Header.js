@@ -20,6 +20,7 @@ export default function Header() {
   const [searchFocus, setSearchFocus] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [studentName, setStudentName] = useState("");
+  const [role, setRole] = useState("");
   const [enrolledCourses, setEnrolledCourses] = useState([]);
   const [cartCount, setCartCount] = useState(0);
   const [coursesLoading, setCoursesLoading] = useState(false);
@@ -40,13 +41,16 @@ export default function Header() {
 
         if (logged) {
           setStudentName(parsedUser?.name || parsedUser?.username || parsedUser?.email || user?.name || "");
+          setRole(parsedUser?.role || user?.role || "");
         } else {
           setStudentName("");
           setEnrolledCourses([]);
+          setRole("");
         }
       } catch {
         setLocalLogged(false);
         setStudentName("");
+        setRole("");
       }
     };
 
@@ -82,6 +86,10 @@ export default function Header() {
   useEffect(() => {
     const fetchStudentInfo = async () => {
       if (!effectiveLoggedIn) {
+        setEnrolledCourses([]);
+        return;
+      }
+      if (role && role !== "student") {
         setEnrolledCourses([]);
         return;
       }
@@ -122,7 +130,7 @@ export default function Header() {
     };
 
     fetchStudentInfo();
-  }, [effectiveLoggedIn, user]);
+  }, [effectiveLoggedIn, role, user]);
 
   useEffect(() => {
     const updateCartCount = () => {
@@ -151,18 +159,27 @@ export default function Header() {
 
   const handleLogout = async () => {
     try {
-      const currentUser = user || JSON.parse(localStorage.getItem("user") || "{}");
-      const userRole = currentUser.role || "student";
       await logout();
-      window.dispatchEvent(new Event("authChanged"));
-      router.push(userRole === "admin" ? "/admin/login" : "/login");
-    } catch {
-      const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
-      router.push(savedUser.role === "admin" ? "/admin/login" : "/login");
-    } finally {
-      setShowLogoutConfirm(false);
+    } catch (error) {
+      console.error("Logout failed:", error);
     }
+
+    window.dispatchEvent(new Event("authChanged"));
+    router.push("/login");
+    setShowLogoutConfirm(false);
   };
+
+  const effectiveRole = role || user?.role || "";
+  let profilePath = "/student/profile";
+  let dashboardPath = "/student/dashboard";
+
+  if (effectiveRole === "admin") {
+    profilePath = "/admin";
+    dashboardPath = "/admine";
+  } else if (effectiveRole === "instructor") {
+    profilePath = "/instructor/profile";
+    dashboardPath = "/instructor/dashboard";
+  }
 
   return (
     <>
@@ -258,17 +275,17 @@ export default function Header() {
               <DropdownMenu>
                 <DropdownMenuTrigger className="flex items-center space-x-2 bg-white text-orange-600 px-3 py-2 rounded-full shadow-md hover:bg-yellow-400 hover:text-black">
                   <User className="w-4 h-4" />
-                  <span className="font-medium text-sm truncate max-w-[100px]">
+                  <span className="font-medium text-sm md:truncate md:max-w-[140px]">
                     Hi, {studentName || user?.name || "Student"}
                   </span>
 
                 </DropdownMenuTrigger>
 
                 <DropdownMenuContent className="dropdown-menu-custom">
-                  <DropdownMenuItem onClick={() => router.push("/student/profile")}>
+                  <DropdownMenuItem onClick={() => router.push(profilePath)}>
                     Profile
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => router.push("/student/dashboard")}>
+                  <DropdownMenuItem onClick={() => router.push(dashboardPath)}>
                     Dashboard
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
