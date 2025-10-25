@@ -10,7 +10,7 @@ const {
   getCartCount,
   getCartSummary
 } = require('../controllers/cartController');
-const { authenticateToken } = require('../middlewares/auth');
+const authenticateToken = require('../middlewares/auth');
 
 // ===== MIDDLEWARE =====
 // All cart routes require authentication

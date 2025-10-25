@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { ShoppingCart, Home, User, Book } from "lucide-react";
 import { useAuth } from "../app/context/AuthContext";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import axios from "axios";
 import "../styles/Header.css";
 import { getToken } from "../app/utils/auth";
@@ -28,7 +28,9 @@ export default function Header() {
 
   const { isLoggedIn, logout, user } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const effectiveLoggedIn = !!isLoggedIn || !!localLogged;
+  const hideHeader = pathname?.startsWith("/admin") || pathname?.startsWith("/student");
 
   useEffect(() => {
     const syncAuth = () => {
@@ -85,7 +87,7 @@ export default function Header() {
 
   useEffect(() => {
     const fetchStudentInfo = async () => {
-      if (!effectiveLoggedIn) {
+      if (!effectiveLoggedIn || hideHeader) {
         setEnrolledCourses([]);
         return;
       }
@@ -130,7 +132,7 @@ export default function Header() {
     };
 
     fetchStudentInfo();
-  }, [effectiveLoggedIn, role, user]);
+  }, [effectiveLoggedIn, role, user, hideHeader]);
 
   useEffect(() => {
     const updateCartCount = () => {
@@ -164,6 +166,11 @@ export default function Header() {
       console.error("Logout failed:", error);
     }
 
+    try {
+      localStorage.removeItem("cartItems");
+    } catch {}
+    setCartCount(0);
+    window.dispatchEvent(new Event("cartUpdated"));
     window.dispatchEvent(new Event("authChanged"));
     router.push("/login");
     setShowLogoutConfirm(false);
@@ -175,10 +182,14 @@ export default function Header() {
 
   if (effectiveRole === "admin") {
     profilePath = "/admin";
-    dashboardPath = "/admine";
+    dashboardPath = "/admin";
   } else if (effectiveRole === "instructor") {
     profilePath = "/instructor/profile";
     dashboardPath = "/instructor/dashboard";
+  }
+
+  if (hideHeader) {
+    return null;
   }
 
   return (

@@ -4,13 +4,17 @@ const ActivityTracker = {
   // Generic activity logger with better type handling
   async logActivity(type, userId, userName, userRole, message, details = {}, req = null) {
     try {
+      const normalizedDetails = details || {};
+      const resolvedEmail = normalizedDetails.email || normalizedDetails.userEmail;
+
       const activity = new Activity({
         type,
         userId: userId, // Keep as-is, schema now accepts Mixed type
         userName: userName || 'Unknown User',
         userRole: userRole || 'student',
+        userEmail: resolvedEmail || undefined,
         message,
-        details,
+        details: normalizedDetails,
         value: details.value ? String(details.value) : null, // ✅ Convert to string
         ipAddress: req ? (req.ip || req.connection?.remoteAddress) : null,
         userAgent: req ? req.get('User-Agent') : null
@@ -31,12 +35,12 @@ const ActivityTracker = {
   // Specific activity loggers
   async logUserRegistration(user, req) {
     return this.logActivity(
-      'user_register',
+      'user_signup',
       user._id || user.id,
       user.name || user.email,
       user.role || 'student',
       `New ${user.role || 'student'} registered: ${user.name || user.email}`,
-      { email: user.email },
+      { email: user.email, userId: user._id || user.id },
       req
     );
   },
@@ -48,7 +52,7 @@ const ActivityTracker = {
       user.name || user.email,
       user.role || 'student',
       `${user.name || user.email} logged in`,
-      {},
+      { email: user.email },
       req
     );
   },
@@ -60,7 +64,7 @@ const ActivityTracker = {
       user.name || user.email,
       user.role || 'student',
       `${user.name || user.email} logged out`,
-      {},
+      { email: user.email },
       req
     );
   },

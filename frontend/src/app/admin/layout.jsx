@@ -1,10 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { Bell } from "lucide-react";
 import { getUserRole, getToken, isTokenExpired, removeToken } from "@/utils/auth";
 import { apiHelpers } from "@/lib/api";
 
 const navigationItems = [
+  { href: "/", label: "Home", icon: "🏠" },
   { href: "/admin", label: "Dashboard", icon: "📊" },
   { href: "/admin/categories", label: "Categories", icon: "🗂️" },
   { href: "/admin/courses", label: "Courses", icon: "🎓" },
@@ -22,6 +24,7 @@ export default function AdminLayout({ children }) {
   const [authorized, setAuthorized] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Role guard
   useEffect(() => {
@@ -101,6 +104,7 @@ export default function AdminLayout({ children }) {
 
     removeToken();
     router.push("/login");
+    setShowLogoutConfirm(false);
   };
 
   const toggleMobileMenu = (e) => {
@@ -189,20 +193,9 @@ export default function AdminLayout({ children }) {
                     onClick={toggleNotifications}
                     className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200 hover-scale"
                     type="button"
+                    aria-label="View notifications"
                   >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15 17h5l-5 5H9l-5-5h5a6 6 0 1010 0z"
-                      />
-                    </svg>
+                    <Bell className="w-5 h-5" />
                     <span className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
                       3
                     </span>
@@ -211,14 +204,8 @@ export default function AdminLayout({ children }) {
 
                 {/* User Profile */}
                 <div className="flex items-center gap-2 pl-3 border-l border-gray-200">
-                  <p className="hidden sm:block text-sm font-semibold text-gray-800">
-                    Admin
-                  </p>
-                  <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-blue-500 rounded-full flex items-center justify-center shadow-lg">
-                    <span className="text-white font-bold text-xs">AD</span>
-                  </div>
                   <button
-                    onClick={handleLogout}
+                    onClick={() => setShowLogoutConfirm(true)}
                     className="px-3 py-1 text-xs font-medium text-red-600 hover:text-white hover:bg-red-600 border border-red-600 rounded-lg transition-all duration-200"
                     type="button"
                   >
@@ -230,26 +217,6 @@ export default function AdminLayout({ children }) {
           </div>
         </header>
 
-        {/* Breadcrumb */}
-        <div className="w-full bg-white/50 border-b border-gray-200/50 flex-shrink-0">
-          <div className="w-full px-4 sm:px-6 lg:px-8 py-3">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-gray-500">Admin</span>
-              <svg
-                className="w-3 h-3 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-              <span className="font-semibold gradient-text-orange-blue">
-                {currentPage?.label || "Dashboard"}
-              </span>
-            </div>
-          </div>
-        </div>
-
         {/* Main Content */}
         <main className="flex-1 w-full">
           <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
@@ -257,6 +224,35 @@ export default function AdminLayout({ children }) {
           </div>
         </main>
       </div>
+
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-80 text-center animate-fade-in">
+            <h2 className="text-lg font-semibold text-gray-800 mb-3">
+              Are you sure you want to logout?
+            </h2>
+            <p className="text-sm text-gray-600 mb-6">
+              You'll need to log in again to access your admin account.
+            </p>
+            <div className="flex justify-center space-x-4">
+              <button
+                onClick={handleLogout}
+                className="px-5 py-2 rounded-full bg-gradient-to-r from-orange-500 to-blue-500 text-white hover:from-orange-600 hover:to-blue-600 shadow-md hover:scale-105"
+                type="button"
+              >
+                Yes, Logout
+              </button>
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="px-5 py-2 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 shadow-md hover:scale-105"
+                type="button"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,12 +3,14 @@ const User = require("../models/User");
 const { getNextId } = require("../models/Counter");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const ActivityTracker = require("../middlewares/activityTracker");
+const { getJwtSecret } = require("../utils/jwt");
 
 // Helper: Generate JWT token for user
 function generateToken(user) {
   return jwt.sign(
     { userId: user._id, email: user.email, role: user.role },
-    process.env.JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: "30d" }
   );
 }
@@ -89,8 +91,10 @@ exports.publicRegister = async (req, res) => {
     const hashedPassword = await bcrypt.hash(String(password), 10);
 
     // ✅ Let MongoDB generate _id automatically - remove manual _id assignment
+    const nextUserId = await getNextId("users");
+
     const user = new User({
-      // _id: nextUserId,  // ❌ REMOVE THIS LINE
+      _id: nextUserId,
       name,
       email: lowerEmail,
       password: hashedPassword,
@@ -99,11 +103,26 @@ exports.publicRegister = async (req, res) => {
 
     await user.save();
     const token = generateToken(user);
+    const sanitizedUser = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      createdAt: user.createdAt,
+    };
+
+    try {
+      if (ActivityTracker?.logUserRegistration) {
+        await ActivityTracker.logUserRegistration(user, req);
+      }
+    } catch (logError) {
+      console.error("Registration activity log failed:", logError);
+    }
 
     return res.status(201).json({
       success: true,
       message: "User registered successfully.",
-      data: { user, token }, // ✅ Return full user object with _id
+      data: { user: sanitizedUser, token },
     });
   } catch (err) {
     console.error("Public registration error:", err);
@@ -179,16 +198,96 @@ exports.profile = async (req, res) => {
 // ========== UPDATE PROFILE (SELF) ==========
 exports.updateProfile = async (req, res) => {
   try {
-    const updates = { ...req.body };
-    delete updates.password; // handled separately
+    const tokenUserId = req.user.userId;
+    const normalizedUserId = Number(tokenUserId);
+    const userId = Number.isNaN(normalizedUserId) ? tokenUserId : normalizedUserId;
 
-    const updatedUser = await User.findByIdAndUpdate(req.user.userId, updates, {
+    const allowedFields = ["name", "email"];
+    const updates = {};
+    allowedFields.forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+        const value = typeof req.body[field] === "string" ? req.body[field].trim() : req.body[field];
+        if (value !== undefined) {
+          updates[field] = value;
+        }
+      }
+    });
+
+    // Remove password or disallowed fields explicitly
+    delete updates.password;
+
+    const existingUser = await User.findById(userId).select("name email role");
+    if (!existingUser) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    const changeLog = [];
+    Object.keys(updates).forEach((field) => {
+      const previousRaw = existingUser[field];
+      const currentRaw = updates[field];
+
+      if (currentRaw === previousRaw) {
+        delete updates[field];
+      } else {
+        changeLog.push({
+          field,
+          previous: previousRaw === undefined || previousRaw === null ? "" : String(previousRaw),
+          current: currentRaw === undefined || currentRaw === null ? "" : String(currentRaw),
+        });
+      }
+    });
+
+    if (!Object.keys(updates).length) {
+      return res.json({
+        success: true,
+        message: "No profile changes detected.",
+        data: existingUser,
+      });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(userId, updates, {
       new: true,
       runValidators: true,
     }).select("-password");
 
     if (!updatedUser) {
       return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    if (changeLog.length) {
+      const previousIdentifier = existingUser.name || existingUser.email || "User";
+      const updatedIdentifier = updatedUser.name || updatedUser.email || previousIdentifier;
+      const actorRole = existingUser.role || updatedUser.role || "student";
+
+      const changeSummaries = changeLog.map((entry) => {
+        const label = entry.field.charAt(0).toUpperCase() + entry.field.slice(1);
+        const previousDisplay = entry.previous || "—";
+        const currentDisplay = entry.current || "—";
+        return `${label}: "${previousDisplay}" → "${currentDisplay}"`;
+      });
+
+      let message;
+      const nameChange = changeLog.find((entry) => entry.field === "name");
+      if (changeLog.length === 1 && nameChange) {
+        const previousName = nameChange.previous || previousIdentifier;
+        const newName = nameChange.current || updatedIdentifier;
+        message = `${previousName} updated profile name to "${newName}"`;
+      } else {
+        message = `${previousIdentifier} updated profile${changeSummaries.length ? ` (${changeSummaries.join("; ")})` : ""}`;
+      }
+
+      await ActivityTracker.logActivity(
+        "profile_update",
+        updatedUser._id || userId,
+        updatedIdentifier,
+        actorRole,
+        message,
+        {
+          email: updatedUser.email,
+          changes: changeLog,
+        },
+        req
+      );
     }
 
     return res.json({

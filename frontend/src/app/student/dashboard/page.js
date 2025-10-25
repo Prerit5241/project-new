@@ -9,18 +9,11 @@ import {
   TrendingUp,
   Award,
   BarChart3,
-  Play,
-  Calendar,
-  User,
-  LogOut,
-  Menu,
-  X,
-  ChevronRight,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
 export default function StudentDashboard() {
-  const { user, logout, isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -31,7 +24,6 @@ export default function StudentDashboard() {
   });
   const [courses, setCourses] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Check auth & fetch data
   useEffect(() => {
@@ -77,18 +69,6 @@ export default function StudentDashboard() {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-  };
-
-  const navigation = [
-    { name: "Dashboard", href: "/student/dashboard", icon: BarChart3, current: true },
-    { name: "My Courses", href: "/student/my-courses", icon: BookOpen, current: false },
-    { name: "Browse Courses", href: "/student/browse", icon: Play, current: false },
-    { name: "Certificates", href: "/student/certificates", icon: Award, current: false },
-    { name: "Profile", href: "/student/profile", icon: User, current: false },
-  ];
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -98,130 +78,79 @@ export default function StudentDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
-      <div
-        className={`${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0`}
-      >
-        <div className="flex items-center justify-between h-16 px-4 bg-gradient-to-r from-blue-600 to-purple-600">
-          <div className="flex items-center">
-            <BookOpen className="w-8 h-8 text-white" />
-            <span className="ml-2 text-xl font-bold text-white">EduPlatform</span>
-          </div>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="lg:hidden text-white hover:text-gray-200"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <nav className="mt-8">
-          <div className="px-4 mb-6">
-            <div className="flex items-center">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                <span className="text-white font-semibold">{user?.name?.charAt(0).toUpperCase()}</span>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-900">{user?.name}</p>
-                <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
-              </div>
+    <div className="space-y-8">
+      <div className="relative overflow-hidden bg-gradient-to-r from-orange-500 to-blue-500 rounded-2xl p-6 lg:p-8 shadow-xl">
+        <div className="absolute inset-0 bg-black/10"></div>
+        <div className="absolute top-4 right-4 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+        <div className="absolute bottom-4 left-4 w-24 h-24 bg-white/10 rounded-full blur-xl"></div>
+        <div className="relative z-10">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+              <h2 className="text-3xl lg:text-4xl font-bold text-white mb-3">
+                Welcome back, {user?.name || "student"}!
+                <span className="inline-block ml-2 animate-bounce">👋</span>
+              </h2>
+              <p className="text-white/90 text-lg max-w-2xl">
+                Here's what's happening with your platform today. Everything looks great!
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button className="bg-white/20 hover:bg-white hover:text-orange-600 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg backdrop-blur-sm border border-white/20 hover:scale-105">
+                Continue Learning
+              </button>
+              <button className="bg-white/20 hover:bg-white hover:text-blue-600 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg backdrop-blur-sm border border-white/20 hover:scale-105">
+                View Progress
+              </button>
             </div>
           </div>
-
-          <div className="space-y-1 px-2">
-            {navigation.map((item) => {
-              const IconComponent = item.icon;
-              return (
-                <a
-                  key={item.name}
-                  href={item.href}
-                  className={`${
-                    item.current
-                      ? "bg-blue-50 border-r-2 border-blue-600 text-blue-600"
-                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                  } group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors`}
-                >
-                  <IconComponent
-                    className={`${
-                      item.current
-                        ? "text-blue-600"
-                        : "text-gray-400 group-hover:text-gray-500"
-                    } mr-3 flex-shrink-0 h-5 w-5`}
-                  />
-                  {item.name}
-                </a>
-              );
-            })}
-          </div>
-
-          <div className="absolute bottom-0 w-full p-4">
-            <button
-              onClick={handleLogout}
-              className="flex items-center w-full px-2 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50 hover:text-gray-900 transition-colors"
-            >
-              <LogOut className="mr-3 h-5 w-5 text-gray-400" />
-              Sign out
-            </button>
-          </div>
-        </nav>
+        </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 lg:ml-0">
-        {/* Top Navigation */}
-        <div className="bg-white shadow-sm">
-          <div className="flex items-center justify-between h-16 px-4">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="lg:hidden text-gray-500 hover:text-gray-700"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-500">Welcome back, {user?.name}!</span>
+      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard title="Total Courses" value={stats.total || 0} icon={<BookOpen className="w-6 h-6 text-blue-600" />} bg="bg-blue-100" />
+        <StatCard title="In Progress" value={stats.active || 0} icon={<TrendingUp className="w-6 h-6 text-green-600" />} bg="bg-green-100" />
+        <StatCard title="Completed" value={stats.completed || 0} icon={<Award className="w-6 h-6 text-purple-600" />} bg="bg-purple-100" />
+        <StatCard title="Avg Progress" value={`${stats.averageProgress || 0}%`} icon={<BarChart3 className="w-6 h-6 text-orange-600" />} bg="bg-orange-100" />
+      </section>
+
+      <section className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        <div className="xl:col-span-2">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">Your Courses</h3>
+                <p className="text-sm text-gray-500">Keep the momentum going with your active learning.</p>
+              </div>
+              <button className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:border-blue-500 hover:text-blue-600">
+                View All
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {courses.length === 0 ? (
+                <div className="text-center py-10 col-span-full">
+                  <p className="text-gray-500">No courses enrolled yet.</p>
+                </div>
+              ) : (
+                courses.map((course, idx) => (
+                  <CourseCard key={course._id || idx} course={course} />
+                ))
+              )}
             </div>
           </div>
         </div>
 
-        {/* Dashboard Content */}
-        <main className="p-6">
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <StatCard title="Total Courses" value={stats.total || 0} icon={<BookOpen className="w-6 h-6 text-blue-600" />} bg="bg-blue-100" />
-            <StatCard title="In Progress" value={stats.active || 0} icon={<TrendingUp className="w-6 h-6 text-green-600" />} bg="bg-green-100" />
-            <StatCard title="Completed" value={stats.completed || 0} icon={<Award className="w-6 h-6 text-purple-600" />} bg="bg-purple-100" />
-            <StatCard title="Avg Progress" value={`${stats.averageProgress || 0}%`} icon={<BarChart3 className="w-6 h-6 text-orange-600" />} bg="bg-orange-100" />
-          </div>
-
-          {/* Courses Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            {courses.length === 0 ? (
-              <div className="text-center py-8 col-span-full">
-                <p className="text-gray-500">No courses enrolled yet</p>
-              </div>
-            ) : (
-              courses.map((course, idx) => (
-                <CourseCard key={course._id || idx} course={course} />
-              ))
-            )}
-          </div>
-
-          {/* Recent Activity */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h2>
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">Recent Activity</h3>
             {recentActivity.length === 0 ? (
-              <p className="text-gray-500">No recent activity</p>
+              <p className="text-gray-500">No recent activity.</p>
             ) : (
               <ul className="space-y-3">
                 {recentActivity.map((activity, idx) => (
-                  <li key={idx} className="flex items-center">
-                    <div className="w-2 h-2 bg-blue-600 rounded-full mr-3"></div>
+                  <li key={idx} className="flex items-start gap-3">
+                    <span className="mt-1 inline-flex h-2 w-2 rounded-full bg-blue-600"></span>
                     <div>
-                      <p className="text-sm text-gray-900">{activity.description}</p>
+                      <p className="text-sm font-medium text-gray-900">{activity.description}</p>
                       <p className="text-xs text-gray-500">{activity.time}</p>
                     </div>
                   </li>
@@ -229,8 +158,18 @@ export default function StudentDashboard() {
               </ul>
             )}
           </div>
-        </main>
-      </div>
+
+          <div className="bg-gradient-to-r from-blue-500 to-indigo-500 rounded-2xl text-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold mb-2">Need a boost?</h3>
+            <p className="text-sm text-white/80 mb-4">
+              Explore curated resources and tips to stay on track with your learning goals.
+            </p>
+            <button className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold transition hover:bg-white hover:text-blue-600">
+              Discover Resources
+            </button>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

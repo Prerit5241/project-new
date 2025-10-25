@@ -19,7 +19,7 @@ import {
 const CourseDetails = () => {
   const { id } = useParams();
   const router = useRouter();
-  const { user, isLoggedIn } = useAuth();
+  const { user, loading: authLoading, isAuthenticated } = useAuth();
 
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -29,13 +29,21 @@ const CourseDetails = () => {
   const [courseModules, setCourseModules] = useState([]);
 
   useEffect(() => {
-    if (!isLoggedIn) {
-      router.push('/login');
+    if (authLoading) {
       return;
     }
+
+    const token = localStorage.getItem("token");
+    const loggedIn = Boolean(isAuthenticated?.() || token);
+
+    if (!loggedIn) {
+      router.replace('/login');
+      return;
+    }
+
     fetchCourse();
     checkEnrollmentStatus();
-  }, [id, isLoggedIn]);
+  }, [authLoading, id, isAuthenticated, router]);
 
   const fetchCourse = async () => {
     try {
@@ -58,6 +66,10 @@ const CourseDetails = () => {
   const checkEnrollmentStatus = async () => {
     try {
       const token = localStorage.getItem("token");
+      if (!token) {
+        setIsEnrolled(false);
+        return;
+      }
       const res = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/api/student/enrollment/${id}`,
         {
@@ -95,7 +107,13 @@ const CourseDetails = () => {
   };
 
   const handleEnroll = async () => {
-    if (!isLoggedIn) {
+    if (authLoading) {
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+
+    if (!(isAuthenticated?.() || user || token)) {
       toast.error('Please login to enroll in this course');
       router.push('/login');
       return;
@@ -103,13 +121,13 @@ const CourseDetails = () => {
 
     setEnrolling(true);
     try {
-      const token = localStorage.getItem("token");
+      const authToken = token || localStorage.getItem("token");
       const res = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/api/student/enroll/${id}`,
         {},
         {
           headers: { 
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${authToken}`,
             'Content-Type': 'application/json'
           },
         }

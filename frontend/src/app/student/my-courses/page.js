@@ -1,309 +1,323 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
-import { useRouter } from 'next/navigation';
-import axios from 'axios';
-import { 
-  BookOpen, 
-  Play, 
-  Clock, 
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../../context/AuthContext";
+import { apiHelpers } from "@/lib/api";
+import toast from "react-hot-toast";
+import {
+  BookOpen,
+  Clock,
   Award,
   TrendingUp,
-  ChevronLeft,
-  Search,
-  Filter,
-  User
-} from 'lucide-react';
-import toast from 'react-hot-toast';
+  Play,
+  User,
+  AlertCircle,
+  ArrowLeft,
+} from "lucide-react";
+
+function formatDate(date) {
+  if (!date) return "—";
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }).format(new Date(date));
+  } catch {
+    return "—";
+  }
+}
+
+function computeStats(enrollments) {
+  if (!enrollments.length) {
+    return {
+      total: 0,
+      active: 0,
+      completed: 0,
+      averageProgress: 0,
+    };
+  }
+
+  const totals = enrollments.reduce(
+    (acc, enrollment) => {
+      acc.total += 1;
+      if (enrollment.status === "completed") acc.completed += 1;
+      if (enrollment.status === "active") acc.active += 1;
+      acc.progressSum += Number(enrollment.progress ?? 0);
+      return acc;
+    },
+    { total: 0, active: 0, completed: 0, progressSum: 0 }
+  );
+
+  return {
+    total: totals.total,
+    active: totals.active,
+    completed: totals.completed,
+    averageProgress: Math.round(totals.progressSum / totals.total || 0),
+  };
+}
 
 export default function MyCoursesPage() {
-  const { user, isLoggedIn } = useAuth();
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+
   const [loading, setLoading] = useState(true);
+  const [enrollments, setEnrollments] = useState([]);
   const [courses, setCourses] = useState([]);
-  const [stats, setStats] = useState({});
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!isLoggedIn) {
-      router.push('/login');
-      return;
-    }
-    
-    if (user?.role !== 'student') {
-      router.push('/login');
+    if (authLoading) {
       return;
     }
 
-    fetchMyCourses();
-  }, [isLoggedIn, user, router]);
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
 
-  const fetchMyCourses = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/student/my-courses`,
-        {
-          headers: { Authorization: `Bearer ${token}` }
+    if (user.role && user.role !== "student") {
+      router.replace("/login");
+      return;
+    }
+
+    const loadProfile = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await apiHelpers.users.getProfile();
+        const payload = response?.data?.data || response?.data?.student || response?.data || {};
+        const profile = payload?.student || payload;
+        const enrollmentList = Array.isArray(profile?.enrolledCourses) ? profile.enrolledCourses : [];
+
+        setEnrollments(enrollmentList);
+
+        if (!enrollmentList.length) {
+          setCourses([]);
+          return;
         }
-      );
 
-      if (response.data.success) {
-        setCourses(response.data.courses);
-        setStats(response.data.stats);
-      } else {
-        toast.error('Failed to load courses');
+        const details = await Promise.all(
+          enrollmentList.map(async (enrollment) => {
+            const courseReference = typeof enrollment.course === "object" && enrollment.course !== null
+              ? enrollment.course
+              : typeof enrollment.courseId === "object" && enrollment.courseId !== null
+              ? enrollment.courseId
+              : null;
+
+            const courseId = courseReference?._id || courseReference?.id || enrollment.courseId;
+
+            const buildFromPayload = (payload = {}) => ({
+              enrollment,
+              course: {
+                id: payload?._id || payload?.id || courseId || enrollment.courseId,
+                title: payload?.title || `Course #${courseId || enrollment.courseId}`,
+                description: payload?.description || "",
+                level: payload?.level || "All levels",
+                duration: payload?.duration || payload?.estimatedDuration || 0,
+                modulesCount: Array.isArray(payload?.modules) ? payload.modules.length : payload?.modulesCount || 0,
+                instructorName:
+                  payload?.instructor?.name ||
+                  payload?.instructorName ||
+                  payload?.createdBy?.name ||
+                  "Instructor",
+              },
+            });
+
+            if (courseReference) {
+              return buildFromPayload(courseReference);
+            }
+
+            if (!courseId) {
+              return buildFromPayload();
+            }
+
+            try {
+              const courseRes = await apiHelpers.courses.getById(courseId);
+              const coursePayload = courseRes?.data?.data || courseRes?.data?.course || courseRes?.data || {};
+              return buildFromPayload(coursePayload);
+            } catch (courseError) {
+              console.warn(`Failed to load course details for ${courseId}`, courseError);
+              return buildFromPayload();
+            }
+          })
+        );
+
+        setCourses(details);
+      } catch (err) {
+        console.error("Failed to load profile", err);
+        const message = err?.response?.data?.message || "Unable to load your courses right now.";
+        setError(message);
+        toast.error(message);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching courses:', error);
-      toast.error('Failed to load courses');
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
-  const handleCourseClick = (courseId) => {
-    router.push(`/student/courses/${courseId}`);
-  };
+    loadProfile();
+  }, [authLoading, router, user]);
 
-  const filteredCourses = courses.filter(course => {
-    const matchesSearch = course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         course.instructor?.name.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesFilter = filterStatus === 'all' || course.enrollment?.status === filterStatus;
-    
-    return matchesSearch && matchesFilter;
-  });
+  const stats = useMemo(() => computeStats(enrollments), [enrollments]);
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-r-transparent"></div>
+      <div className="min-h-[70vh] flex flex-col items-center justify-center space-y-4 text-gray-500">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-500 border-r-transparent" />
+        <p className="text-sm font-medium">Loading your courses...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Navigation */}
-        <div className="mb-8">
+    <div className="min-h-[70vh] bg-gradient-to-br from-blue-50 via-white to-purple-50 py-10">
+      <div className="mx-auto max-w-6xl px-4">
+        <header className="mb-10 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">My Courses</h1>
+            <p className="text-sm text-gray-500">Review everything you are currently enrolled in.</p>
+          </div>
           <button
-            onClick={() => router.push('/student/dashboard')}
-            className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors group"
+            onClick={() => router.push("/student/dashboard")}
+            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-orange-500 via-orange-600 to-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:from-orange-600 hover:via-orange-700 hover:to-blue-700 hover:shadow-xl"
           >
-            <ChevronLeft className="w-4 h-4 mr-1 group-hover:-translate-x-1 transition-transform" />
+            <ArrowLeft className="h-4 w-4" />
             Back to Dashboard
           </button>
-        </div>
+        </header>
 
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">My Courses</h1>
-          <p className="text-xl text-gray-600">Continue your learning journey</p>
-        </div>
+        <section className="mb-10 grid grid-cols-1 gap-4 md:grid-cols-4">
+          <StatCard icon={<BookOpen className="h-5 w-5" />} label="Total Courses" value={stats.total} color="bg-blue-100 text-blue-700" />
+          <StatCard icon={<TrendingUp className="h-5 w-5" />} label="In Progress" value={stats.active} color="bg-emerald-100 text-emerald-700" />
+          <StatCard icon={<Award className="h-5 w-5" />} label="Completed" value={stats.completed} color="bg-purple-100 text-purple-700" />
+          <StatCard icon={<Clock className="h-5 w-5" />} label="Average Progress" value={`${stats.averageProgress}%`} color="bg-orange-100 text-orange-700" />
+        </section>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex items-center">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <BookOpen className="w-6 h-6 text-blue-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Total Enrolled</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.total || 0}</p>
+        {error && (
+          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-5 w-5" />
+              <div>
+                <p className="font-semibold">Something went wrong</p>
+                <p>{error}</p>
               </div>
             </div>
           </div>
+        )}
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex items-center">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <TrendingUp className="w-6 h-6 text-green-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">In Progress</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.active || 0}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex items-center">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <Award className="w-6 h-6 text-purple-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Completed</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.completed || 0}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex items-center">
-              <div className="p-2 bg-orange-100 rounded-lg">
-                <Clock className="w-6 h-6 text-orange-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Avg Progress</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.averageProgress || 0}%</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Search and Filter */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                placeholder="Search courses..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Filter className="text-gray-400 w-5 h-5" />
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="all">All Courses</option>
-                <option value="active">In Progress</option>
-                <option value="completed">Completed</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* Courses Grid */}
-        {filteredCourses.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-            <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              {searchTerm || filterStatus !== 'all' ? 'No courses match your search' : 'No courses enrolled yet'}
-            </h3>
-            <p className="text-gray-500 mb-6">
-              {searchTerm || filterStatus !== 'all' 
-                ? 'Try adjusting your search or filter criteria' 
-                : 'Start your learning journey by enrolling in a course'
-              }
-            </p>
-            {!searchTerm && filterStatus === 'all' && (
-              <button
-                onClick={() => router.push('/student/browse')}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 shadow-lg"
-              >
-                Browse Courses
-              </button>
-            )}
+        {!courses.length ? (
+          <div className="rounded-3xl border border-dashed border-gray-200 bg-white p-12 text-center">
+            <BookOpen className="mx-auto h-12 w-12 text-gray-300" />
+            <h2 className="mt-4 text-xl font-semibold text-gray-900">No courses found</h2>
+            <p className="mt-2 text-sm text-gray-500">Enroll in a course to see it listed here.</p>
+            <button
+              onClick={() => router.push("/student/browse")}
+              className="mt-6 inline-flex items-center rounded-full bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-blue-700 hover:to-purple-700"
+            >
+              Browse Courses
+            </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredCourses.map((course) => (
-              <div
-                key={course._id}
-                className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-all duration-200 transform hover:scale-105 cursor-pointer"
-                onClick={() => handleCourseClick(course._id)}
-              >
-                {/* Course Image */}
-                <div className="h-48 bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
-                  <Play className="w-12 h-12 text-white opacity-80" />
-                </div>
-
-                <div className="p-6">
-                  {/* Course Info */}
-                  <div className="mb-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                        course.enrollment?.status === 'completed' 
-                          ? 'bg-green-100 text-green-800'
-                          : course.enrollment?.status === 'active'
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {course.enrollment?.status === 'completed' ? 'Completed' : 
-                         course.enrollment?.status === 'active' ? 'In Progress' : 'Enrolled'}
-                      </span>
-                      <span className="px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800">
-                        {course.level}
-                      </span>
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2 line-clamp-2">
-                      {course.title}
-                    </h3>
-                    <p className="text-gray-600 text-sm mb-3 line-clamp-2">
-                      {course.description}
-                    </p>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            {courses.map(({ enrollment, course }) => (
+              <article key={`${course.id}-${enrollment.enrolledAt}`} className="group flex h-full flex-col justify-between rounded-3xl border border-gray-100 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
+                        enrollment.status === "completed"
+                          ? "bg-green-100 text-green-700"
+                          : enrollment.status === "active"
+                          ? "bg-blue-100 text-blue-700"
+                          : "bg-gray-100 text-gray-600"
+                      }`}
+                    >
+                      {enrollment.status === "completed"
+                        ? "Completed"
+                        : enrollment.status === "active"
+                        ? "In Progress"
+                        : "Enrolled"}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700">
+                      {course.level}
+                    </span>
                   </div>
 
-                  {/* Instructor */}
-                  <div className="flex items-center mb-4">
-                    <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mr-3">
-                      <User className="w-4 h-4 text-white" />
+                  <h3 className="mt-4 text-xl font-semibold text-gray-900 group-hover:text-blue-600">
+                    {course.title}
+                  </h3>
+                  {course.description && (
+                    <p className="mt-2 text-sm text-gray-500 line-clamp-3">{course.description}</p>
+                  )}
+                </div>
+
+                <div className="mt-6 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-purple-500 text-white">
+                      <User className="h-4 w-4" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        {course.instructor?.name || 'Professional Instructor'}
-                      </p>
+                      <p className="text-sm font-medium text-gray-900">{course.instructorName}</p>
                       <p className="text-xs text-gray-500">Instructor</p>
                     </div>
                   </div>
 
-                  {/* Progress Bar */}
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-gray-700">Progress</span>
-                      <span className="text-sm text-gray-900 font-semibold">
-                        {course.enrollment?.progress || 0}%
-                      </span>
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>Enrolled {formatDate(enrollment.enrolledAt)}</span>
+                    <span>Last accessed {formatDate(enrollment.lastAccessed)}</span>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-sm font-medium text-gray-700">
+                      <span>Progress</span>
+                      <span>{enrollment.progress ?? 0}%</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="h-2 w-full rounded-full bg-gray-200">
                       <div
-                        className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-500"
-                        style={{ width: `${course.enrollment?.progress || 0}%` }}
-                      ></div>
+                        className="h-2 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all"
+                        style={{ width: `${Math.min(Number(enrollment.progress ?? 0), 100)}%` }}
+                      />
                     </div>
                   </div>
 
-                  {/* Course Stats */}
                   <div className="flex items-center justify-between text-sm text-gray-500">
-                    <div className="flex items-center">
-                      <Clock className="w-4 h-4 mr-1" />
-                      <span>{course.duration} hours</span>
-                    </div>
-                    <div className="flex items-center">
-                      <BookOpen className="w-4 h-4 mr-1" />
-                      <span>{course.modules?.length || 0} modules</span>
-                    </div>
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-4 w-4" />
+                      {course.duration ? `${course.duration} hrs` : "Flexible"}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <BookOpen className="h-4 w-4" />
+                      {course.modulesCount} modules
+                    </span>
                   </div>
 
-                  {/* Action Button */}
-                  <div className="mt-4">
-                    <button 
-                      className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-2 px-4 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 flex items-center justify-center gap-2"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCourseClick(course._id);
-                      }}
-                    >
-                      <Play className="w-4 h-4" />
-                      Continue Learning
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => router.push(`/student/courses/${course.id}`)}
+                    className="w-full rounded-full bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:from-blue-700 hover:to-purple-700"
+                  >
+                    <span className="inline-flex items-center justify-center gap-2">
+                      <Play className="h-4 w-4" />
+                      Continue learning
+                    </span>
+                  </button>
                 </div>
-              </div>
+              </article>
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ icon, label, value, color }) {
+  return (
+    <div className="flex items-center gap-4 rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+      <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${color}`}>{icon}</div>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+        <p className="text-2xl font-bold text-gray-900">{value}</p>
       </div>
     </div>
   );

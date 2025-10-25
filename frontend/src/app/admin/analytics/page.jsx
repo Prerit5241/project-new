@@ -16,10 +16,12 @@ const ACTIVITY_TYPE_META = {
   user_login: { label: "User Login", color: "bg-blue-100 text-blue-700" },
   user_signup: { label: "New User", color: "bg-green-100 text-green-700" },
   user_logout: { label: "User Logout", color: "bg-slate-100 text-slate-700" },
+  profile_update: { label: "Profile Updated", color: "bg-amber-100 text-amber-700" },
   product_created: { label: "Product Created", color: "bg-emerald-100 text-emerald-700" },
   product_updated: { label: "Product Updated", color: "bg-amber-100 text-amber-700" },
   course_enrollment: { label: "Course Enrollment", color: "bg-purple-100 text-purple-700" },
-  purchase: { label: "Purchase", color: "bg-pink-100 text-pink-700" }
+  purchase: { label: "Purchase", color: "bg-pink-100 text-pink-700" },
+  CART_ADD_ITEM: { label: "Item added to card", color: "bg-blue-100 text-blue-700" }
 };
 
 function MetricCard({ icon, label, value, change, subText, color, format }) {
@@ -85,6 +87,76 @@ function normalizeMetricValue(raw) {
 
 function ActivityRow({ activity }) {
   const meta = ACTIVITY_TYPE_META[activity.type] || { label: activity.type, color: "bg-gray-100 text-gray-700" };
+  const messageText = useMemo(() => {
+    if (activity.type === "profile_update" && activity.details) {
+      const changes = Array.isArray(activity.details.changes) ? activity.details.changes : [];
+
+      if (changes.length === 1) {
+        const change = changes[0];
+        const previousDisplay = change?.previous || "—";
+        const currentDisplay = change?.current || "—";
+        const fieldLabel = (change?.field || "Field").replace(/_/g, " ");
+        return `${fieldLabel.charAt(0).toUpperCase() + fieldLabel.slice(1)} updated: "${previousDisplay}" → "${currentDisplay}"`;
+      }
+
+      if (changes.length > 1) {
+        const summaries = changes.map((change) => {
+          const fieldLabel = (change?.field || "Field").replace(/_/g, " ");
+          const previousDisplay = change?.previous || "—";
+          const currentDisplay = change?.current || "—";
+          return `${fieldLabel.charAt(0).toUpperCase() + fieldLabel.slice(1)}: "${previousDisplay}" → "${currentDisplay}"`;
+        });
+        return `Profile updated • ${summaries.join(" • ")}`;
+      }
+    }
+
+    return activity.message;
+  }, [activity]);
+  const detailText = useMemo(() => {
+    const details = activity.details;
+    if (!details) return null;
+
+    if (typeof details === "string") {
+      return details;
+    }
+
+    if (Array.isArray(details)) {
+      return details.join(" • ");
+    }
+
+    if (typeof details === "object") {
+      if (Array.isArray(details.changes) && details.changes.length) {
+        return details.changes
+          .map((change) => {
+            const fieldLabel = (change.field || "Field").replace(/_/g, " ");
+            const previous = change.previous || "—";
+            const current = change.current || "—";
+            return `${fieldLabel}: ${previous} → ${current}`;
+          })
+          .join(" • ");
+      }
+
+      if (details.metadata) {
+        try {
+          return JSON.stringify(details.metadata);
+        } catch {
+          return String(details.metadata);
+        }
+      }
+
+      if (details.email) {
+        return `Email: ${details.email}`;
+      }
+
+      try {
+        return JSON.stringify(details);
+      } catch {
+        return String(details);
+      }
+    }
+
+    return null;
+  }, [activity.details]);
 
   return (
     <div className="flex flex-col rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition hover:shadow-lg md:flex-row md:items-center md:justify-between">
@@ -93,13 +165,13 @@ function ActivityRow({ activity }) {
           {meta.label}
         </span>
         <div>
-          <p className="text-sm font-semibold text-gray-900">{activity.message}</p>
+          <p className="text-sm font-semibold text-gray-900">{messageText}</p>
           <p className="mt-1 text-xs text-gray-500">
             {activity.userName ? `${activity.userName} • ` : ""}
             {activity.userRole ? `${activity.userRole}` : ""}
           </p>
-          {activity.details && (
-            <p className="mt-2 text-xs text-gray-500">{activity.details}</p>
+          {detailText && (
+            <p className="mt-2 text-xs text-gray-500 break-words">{detailText}</p>
           )}
         </div>
       </div>

@@ -126,6 +126,7 @@ app.use("/api/instructor", require("./routes/instructorRoutes")); // instructor-
 
 // ✅ E-commerce routes
 app.use("/api/products", require("./routes/productRoutes")); // product management
+app.use("/api/cart", require("./routes/cartRoutes")); // cart management
 app.use("/api/categories", require("./routes/categoryRoutes")); // category management
 app.use("/api/subcategories", require("./routes/subCategoryRoutes")); // subcategory management
 

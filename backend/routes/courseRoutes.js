@@ -25,11 +25,11 @@ router.post(
   courseController.createCourse
 );
 
-// GET all courses (any authenticated user)
-router.get('/', auth, courseController.getCourses);
+// GET all courses (public)
+router.get('/', courseController.getCourses);
 
-// GET course by ID (any authenticated user)
-router.get('/:id', auth, courseController.getCourseById);
+// GET course by ID (public)
+router.get('/:id', courseController.getCourseById);
 
 // UPDATE a course (Admin + Instructor)
 router.put(

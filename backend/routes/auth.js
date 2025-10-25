@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { getJwtSecret } = require('../utils/jwt');
 const User = require('../models/User');
 const { getNextId } = require('../models/Counter');
 const ActivityTracker = require('../middlewares/activityTracker');
@@ -16,7 +17,7 @@ const authenticateToken = (req, res, next) => {
     return res.status(401).json({ success: false, message: 'Access token required' });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+  jwt.verify(token, getJwtSecret(), (err, user) => {
     if (err) {
       return res.status(403).json({ success: false, message: 'Invalid or expired token' });
     }
@@ -168,18 +169,16 @@ router.post('/login', async (req, res) => {
     console.log('✅ Valid user ID for JWT:', userId);
     
     // Create JWT token with proper user ID
-    const payload = { 
-      userId: userId, 
-      id: userId,  // Also include id for compatibility
+    const payload = {
+      userId: userId,
+      id: userId, // Also include id for compatibility
       email: user.email,
       name: user.name,
-      role: user.role 
+      role: user.role,
     };
-    
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '24h' });
-    
-    // ✅ Log successful login activity
-    console.log('🔍 DEBUG - About to log activity for user ID:', userId);
+
+    const token = jwt.sign(payload, getJwtSecret(), { expiresIn: '24h' });
+
     try {
       if (ActivityTracker && typeof ActivityTracker.logUserLogin === 'function') {
         await ActivityTracker.logUserLogin(user, req);
@@ -191,13 +190,13 @@ router.post('/login', async (req, res) => {
           userRole: user.role || 'student',
           type: 'user_login',
           message: `Successful login for ${user.email}`,
-          details: { 
+          details: {
             ipAddress: req.ip || req.connection.remoteAddress,
-            userAgent: req.get('User-Agent')
+            userAgent: req.get('User-Agent'),
           },
           severity: 'low',
           ipAddress: req.ip || req.connection.remoteAddress,
-          userAgent: req.get('User-Agent')
+          userAgent: req.get('User-Agent'),
         });
       }
     } catch (logError) {
@@ -354,9 +353,10 @@ router.post('/register', async (req, res) => {
           userEmail: savedUser.email,
           userName: savedUser.name,
           userRole: savedUser.role,
-          type: 'user_register',
+          type: 'user_signup',
           message: `New ${role} registered: ${name}`,
           details: { 
+            email: savedUser.email,
             ipAddress: req.ip || req.connection.remoteAddress,
             userAgent: req.get('User-Agent')
           },

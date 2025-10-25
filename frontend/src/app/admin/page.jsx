@@ -1,7 +1,12 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { getToken } from "@/utils/auth";
+import { apiHelpers } from "@/lib/api";
+import { formatDistanceToNow, parseISO } from "date-fns";
 
 export default function AdminPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
   const [recentData, setRecentData] = useState({
@@ -10,6 +15,189 @@ export default function AdminPage() {
     products: [],
     activities: []
   });
+  const [allSignupUsers, setAllSignupUsers] = useState([]);
+  const [showAllUsers, setShowAllUsers] = useState(false);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
+
+  const [adminName, setAdminName] = useState("Admin");
+
+  useEffect(() => {
+    const syncAdminName = () => {
+      try {
+        const token = typeof window !== "undefined" ? getToken?.() : null;
+        const storedUserRaw = typeof window !== "undefined" ? localStorage.getItem("user") : null;
+        if (!token || !storedUserRaw) {
+          setAdminName("Admin");
+          return;
+        }
+
+        const parsedUser = JSON.parse(storedUserRaw);
+        const name = parsedUser?.name || parsedUser?.username || parsedUser?.email;
+        setAdminName(name || "Admin");
+      } catch (error) {
+        console.error("Failed to load admin name", error);
+        setAdminName("Admin");
+      }
+    };
+
+    syncAdminName();
+  }, []);
+
+  const loadActivities = useCallback(async () => {
+    setActivitiesLoading(true);
+    try {
+      const [activitiesRes, signupRes] = await Promise.all([
+        apiHelpers.activities.getRecent({ limit: 10, days: 7 }),
+        apiHelpers.activities.getRecent({ limit: 100, type: "user_signup" }),
+      ]);
+
+      const activitiesPayload = activitiesRes?.data?.data || activitiesRes?.data || [];
+      const signupPayload = signupRes?.data?.data || signupRes?.data || [];
+
+      const mappedUsers = Array.isArray(signupPayload)
+        ? signupPayload.map((item) => ({
+            id: item.id || item._id,
+            name:
+              formatActivityDetail(
+                item.userName ||
+                  item.details?.name ||
+                  item.message?.split(": ")?.[1]
+              ) || "New User",
+            email:
+              formatActivityDetail(item.details?.email || item.userEmail) || "",
+            role: item.userRole || "student",
+            joinDate: item.timestamp
+              ? formatDistanceToNow(parseISO(item.timestamp), { addSuffix: true })
+              : item.time || "Just now",
+          }))
+        : [];
+
+      setAllSignupUsers(mappedUsers);
+
+      setRecentData((prev) => ({
+        ...prev,
+        activities: Array.isArray(activitiesPayload) ? activitiesPayload : [],
+        users: mappedUsers.slice(0, 4),
+      }));
+      setShowAllUsers(false);
+    } catch (error) {
+      console.error("Failed to load recent activities", error);
+    } finally {
+      setActivitiesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadActivities();
+  }, [loadActivities]);
+
+  const formattedActivities = useMemo(() => {
+    return (recentData.activities || []).map((activity) => {
+      const type = activity.type || activity.activityType || "generic";
+      const timestampRaw = activity.timestamp || activity.createdAt || activity.updatedAt;
+      let timeLabel = activity.time || "Just now";
+
+      if (timestampRaw) {
+        try {
+          const parsed = typeof timestampRaw === "string" ? parseISO(timestampRaw) : new Date(timestampRaw);
+          if (!Number.isNaN(parsed?.getTime())) {
+            timeLabel = formatDistanceToNow(parsed, { addSuffix: true });
+          }
+        } catch (error) {
+          try {
+            timeLabel = new Date(timestampRaw).toLocaleString();
+          } catch (error) {
+            timeLabel = activity.time || "Just now";
+          }
+        }
+      }
+
+      const normalizedType = type === "login" ? "user_login" : type === "logout" ? "user_logout" : type;
+      const rawTitle = activity.message || activity.action || "Platform activity";
+      const rawDescription = activity.details || activity.description;
+      const actorName =
+        activity.userName ||
+        activity.user ||
+        activity.actor ||
+        (typeof activity.details === "object" && activity.details
+          ? activity.details.userName || activity.details.studentName || activity.details.name
+          : undefined);
+
+      const parsePossibleJson = (value) => {
+        if (typeof value !== "string") return undefined;
+        const trimmed = value.trim();
+        if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+          try {
+            return JSON.parse(trimmed);
+          } catch {
+            return undefined;
+          }
+        }
+        return undefined;
+      };
+
+      const rawDetailsObject =
+        typeof activity.details === "object" && activity.details
+          ? activity.details
+          : parsePossibleJson(activity.details) || undefined;
+      const courseData =
+        rawDetailsObject && typeof rawDetailsObject === "object"
+          ? rawDetailsObject.course || rawDetailsObject.courseDetails || rawDetailsObject
+          : undefined;
+      const courseId =
+        rawDetailsObject?.courseId ||
+        courseData?.courseId ||
+        courseData?._id ||
+        courseData?.id ||
+        rawDetailsObject?.courseCode ||
+        rawDetailsObject?.course_id;
+      const courseTitle =
+        rawDetailsObject?.courseTitle ||
+        courseData?.title ||
+        courseData?.name ||
+        rawDetailsObject?.title;
+
+      return {
+        id: activity.id || activity._id || `${normalizedType}-${activity.timestamp || activity.createdAt || Math.random()}`,
+        type: normalizedType,
+        icon: getActivityIcon(normalizedType),
+        style: getActivityStyle(normalizedType),
+        title: (() => {
+          if ((normalizedType || "").toUpperCase() === "CART_ADD_ITEM") {
+            if (courseTitle) {
+              return `Item added to cart: ${courseTitle}`;
+            }
+            return "Item added to cart";
+          }
+          return formatActivityDetail(rawTitle) || "Platform activity";
+        })(),
+        subtitle: (() => {
+          const baseParts = [actorName, activity.userRole].filter(Boolean);
+          if ((normalizedType || "").toUpperCase() === "CART_ADD_ITEM") {
+            const studentLabel = actorName ? `Student: ${actorName}` : undefined;
+            const parts = [studentLabel, activity.userRole].filter(Boolean);
+            return parts.length ? parts.join(" • ") : baseParts.join(" • ");
+          }
+          return baseParts.join(" • ");
+        })(),
+        description: (() => {
+          if ((normalizedType || "").toUpperCase() === "CART_ADD_ITEM") {
+            const descParts = [];
+            if (courseId) {
+              descParts.push(`Course ID: ${courseId}`);
+            }
+            if (!courseTitle && courseData?.category) {
+              descParts.push(`Category: ${courseData.category}`);
+            }
+            const descString = descParts.join(" • ");
+            if (descString) return descString;
+          }
+          return formatActivityDetail(rawDescription);
+        })(),
+        time: timeLabel,
+      };
+    });
+  }, [recentData.activities]);
 
   useEffect(() => {
     // Simulate API calls - replace with real API endpoints
@@ -32,7 +220,8 @@ export default function AdminPage() {
           }
         });
 
-        setRecentData({
+        setRecentData((prev) => ({
+          ...prev,
           orders: [
             { id: 'ORD-001', customer: 'Rahul Sharma', amount: 2999, status: 'completed', date: '2025-09-20' },
             { id: 'ORD-002', customer: 'Priya Singh', amount: 1499, status: 'pending', date: '2025-09-20' },
@@ -40,27 +229,13 @@ export default function AdminPage() {
             { id: 'ORD-004', customer: 'Sneha Patel', amount: 899, status: 'completed', date: '2025-09-19' },
             { id: 'ORD-005', customer: 'Vikram Rao', amount: 4999, status: 'pending', date: '2025-09-18' },
           ],
-          users: [
-            { id: 1, name: 'Arjun Mehta', email: 'arjun@example.com', role: 'student', joinDate: '2025-09-19' },
-            { id: 2, name: 'Kavya Reddy', email: 'kavya@example.com', role: 'instructor', joinDate: '2025-09-18' },
-            { id: 3, name: 'Rohan Gupta', email: 'rohan@example.com', role: 'student', joinDate: '2025-09-17' },
-            { id: 4, name: 'Anjali Sharma', email: 'anjali@example.com', role: 'student', joinDate: '2025-09-16' },
-          ],
           products: [
             { id: 101, name: 'Complete JavaScript Course', price: 2999, stock: 'unlimited', sales: 234 },
             { id: 102, name: 'React Masterclass', price: 3999, stock: 'unlimited', sales: 189 },
             { id: 103, name: 'Node.js Backend Development', price: 2499, stock: 'unlimited', sales: 156 },
             { id: 104, name: 'Full Stack Web Development', price: 4999, stock: 'unlimited', sales: 298 },
-          ],
-          activities: [
-            { action: 'New order placed', user: 'Rahul Sharma', time: '2 minutes ago', type: 'order' },
-            { action: 'New user registered', user: 'Kavya Reddy', time: '15 minutes ago', type: 'user' },
-            { action: 'Course updated', user: 'Admin', time: '1 hour ago', type: 'course' },
-            { action: 'Product added', user: 'Admin', time: '2 hours ago', type: 'product' },
-            { action: 'Payment processed', user: 'Priya Singh', time: '3 hours ago', type: 'order' },
-            { action: 'Course completed', user: 'Amit Kumar', time: '5 hours ago', type: 'course' },
           ]
-        });
+        }));
         
         setLoading(false);
       } catch (error) {
@@ -71,6 +246,8 @@ export default function AdminPage() {
 
     loadDashboardData();
   }, []);
+
+  const displayedUsers = showAllUsers ? allSignupUsers : recentData.users;
 
   if (loading) {
     return <DashboardSkeleton />;
@@ -87,7 +264,7 @@ export default function AdminPage() {
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
             <div className="mb-6 lg:mb-0">
               <h1 className="text-3xl lg:text-4xl font-bold text-white mb-3">
-                Welcome back, Admin! 
+                Welcome back, {adminName}! 
                 <span className="inline-block ml-2 animate-bounce">👋</span>
               </h1>
               <p className="text-white/90 text-lg max-w-2xl">
@@ -210,22 +387,62 @@ export default function AdminPage() {
         {/* Recent Activity */}
         <div>
           <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 hover:shadow-2xl transition-all duration-300">
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-gray-800 mb-1">Recent Activity</h2>
-              <p className="text-gray-600">Latest platform activities</p>
+            <div className="mb-6 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-1">Recent Activity</h2>
+                <p className="text-gray-600">Login events, new users, product updates, and more.</p>
+              </div>
+              <button
+                onClick={loadActivities}
+                disabled={activitiesLoading}
+                className="flex items-center gap-2 rounded-xl border-2 border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-all hover:border-blue-500 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+                type="button"
+              >
+                {activitiesLoading ? (
+                  <>
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                    </svg>
+                    Refreshing...
+                  </>
+                ) : (
+                  <>
+                    <span className="text-lg leading-none">🔄</span>
+                    Refresh
+                  </>
+                )}
+              </button>
             </div>
             <div className="space-y-4 max-h-96 overflow-y-auto">
-              {recentData.activities.map((activity, index) => (
-                <div key={index} className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 hover:from-orange-50 hover:to-blue-50 transition-all duration-300 border border-gray-200/50">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg shadow-lg text-white ${getActivityStyle(activity.type)}`}>
-                    {getActivityIcon(activity.type)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-800 truncate">{activity.action}</p>
-                    <p className="text-sm text-gray-600 truncate">{activity.user} • {activity.time}</p>
-                  </div>
+              {activitiesLoading ? (
+                [...Array(4)].map((_, idx) => (
+                  <div key={idx} className="h-20 animate-pulse rounded-xl bg-gray-100" />
+                ))
+              ) : formattedActivities.length === 0 ? (
+                <div className="flex h-32 flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 text-sm text-gray-500">
+                  No recent platform activities.
                 </div>
-              ))}
+              ) : (
+                formattedActivities.map((activity) => (
+                  <div
+                    key={activity.id}
+                    className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 hover:from-orange-50 hover:to-blue-50 transition-all duration-300 border border-gray-200/50"
+                  >
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg shadow-lg text-white ${activity.style}`}>
+                      {activity.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-800 truncate">{activity.title}</p>
+                      <p className="text-sm text-gray-600 truncate">{activity.subtitle || "System"}</p>
+                      {activity.description && (
+                        <p className="mt-1 text-xs text-gray-500 truncate">{activity.description}</p>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500 whitespace-nowrap">{activity.time}</div>
+                  </div>
+                ))
+              )}
             </div>
             <div className="mt-6 text-center">
               <button className="border-2 border-gray-300 text-gray-700 hover:bg-gradient-to-r hover:from-orange-500 hover:to-blue-500 hover:text-white hover:border-transparent px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105">
@@ -309,14 +526,17 @@ export default function AdminPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-800 mb-1">Recent Users</h2>
-            <p className="text-gray-600">Newly registered users</p>
           </div>
-          <button className="bg-gradient-to-r from-orange-500 to-blue-500 text-white px-6 py-3 rounded-xl font-semibold hover:from-orange-600 hover:to-blue-600 transition-all duration-300 shadow-lg hover:scale-105">
+          <button
+            type="button"
+            onClick={() => router.push("/admin/users")}
+            className="bg-gradient-to-r from-orange-500 to-blue-500 text-white px-6 py-3 rounded-xl font-semibold hover:from-orange-600 hover:to-blue-600 transition-all duration-300 shadow-lg hover:scale-105"
+          >
             Manage Users
           </button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {recentData.users.map(user => (
+          {displayedUsers.map(user => (
             <div key={user.id} className="p-4 rounded-xl border border-gray-200 hover:shadow-md transition-all duration-300 hover:border-orange-300">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
@@ -336,6 +556,17 @@ export default function AdminPage() {
             </div>
           ))}
         </div>
+        {allSignupUsers.length > 4 && (
+          <div className="mt-6 text-center">
+            <button
+              type="button"
+              onClick={() => setShowAllUsers((prev) => !prev)}
+              className="border-2 border-gray-300 text-gray-700 hover:bg-gradient-to-r hover:from-orange-500 hover:to-blue-500 hover:text-white hover:border-transparent px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105"
+            >
+              {showAllUsers ? "Show Less" : "Load More"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -433,7 +664,9 @@ function getActivityIcon(type) {
     order: '📦',  
     user: '👤',
     course: '🎓',
-    product: '🛒'
+    product: '🛒',
+    user_login: '🔓',
+    user_logout: '🔒'
   };
   return icons[type] || '📋';
 }
@@ -443,7 +676,9 @@ function getActivityStyle(type) {
     order: 'bg-gradient-to-br from-green-400 to-emerald-500',
     user: 'bg-gradient-to-br from-blue-400 to-cyan-500', 
     course: 'bg-gradient-to-br from-purple-400 to-indigo-500',
-    product: 'bg-gradient-to-br from-orange-400 to-red-500'
+    product: 'bg-gradient-to-br from-orange-400 to-red-500',
+    user_login: 'bg-gradient-to-br from-emerald-400 to-green-500',
+    user_logout: 'bg-gradient-to-br from-rose-400 to-red-500'
   };
   return styles[type] || 'bg-gradient-to-br from-gray-400 to-gray-500';
 }
@@ -455,4 +690,24 @@ function getRoleStyle(role) {
     student: 'bg-green-100 text-green-700 border border-green-200'
   };
   return styles[role] || 'bg-gray-100 text-gray-700 border border-gray-200';
+}
+
+function formatActivityDetail(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => formatActivityDetail(entry))
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "";
+    }
+  }
+  return "";
 }

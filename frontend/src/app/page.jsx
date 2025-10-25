@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import Typed from "typed.js";
+import { apiHelpers } from "@/lib/api";
 import {
   Code,
   Database,
@@ -57,6 +59,39 @@ const renderIcon = (iconName, iconClass) => {
   }
   return <Code className={iconClass || "w-12 h-12 mx-auto text-orange-600 mb-4"} />;
 };
+
+const CATEGORY_ICON_PRESETS = [
+  { icon: "Code", color: "text-orange-600" },
+  { icon: "Database", color: "text-blue-600" },
+  { icon: "Palette", color: "text-pink-600" },
+  { icon: "Brain", color: "text-green-600" },
+  { icon: "Smartphone", color: "text-purple-600" },
+  { icon: "Globe", color: "text-indigo-600" },
+  { icon: "Monitor", color: "text-yellow-600" },
+  { icon: "Camera", color: "text-red-600" }
+];
+
+const CATEGORY_ICON_MAPPING = {
+  "web development": { icon: "Code", color: "text-orange-600" },
+  "data science": { icon: "Database", color: "text-blue-600" },
+  "ui / ux design": { icon: "Palette", color: "text-pink-600" },
+  "ai & machine learning": { icon: "Brain", color: "text-green-600" },
+  "mobile development": { icon: "Smartphone", color: "text-purple-600" },
+  "devops & cloud": { icon: "Globe", color: "text-indigo-600" },
+  "game development": { icon: "Monitor", color: "text-yellow-600" },
+  "digital marketing": { icon: "Camera", color: "text-red-600" }
+};
+
+const DEFAULT_CATEGORIES = [
+  { id: 1, name: "Web Development", description: "Learn HTML, CSS, JS, React & more" },
+  { id: 2, name: "Data Science", description: "Master Python, ML & AI tools" },
+  { id: 3, name: "UI / UX Design", description: "Design beautiful interfaces" },
+  { id: 4, name: "AI & Machine Learning", description: "Build intelligent systems" },
+  { id: 5, name: "Mobile Development", description: "Create iOS & Android apps" },
+  { id: 6, name: "DevOps & Cloud", description: "Deploy and scale applications" },
+  { id: 7, name: "Game Development", description: "Build games with Unity & Unreal" },
+  { id: 8, name: "Digital Marketing", description: "Grow your online presence" }
+];
 
 // Enhanced image URL extraction
 const extractImageUrl = (images) => {
@@ -138,6 +173,7 @@ const isValidImageUrl = (url) => {
 /* ───────── Component ───────── */
 export default function Home() {
   const { isLoggedIn } = useAuth();
+  const router = useRouter();
   
   /* Featured products */
   const [featuredProducts, setFeaturedProducts] = useState([]);
@@ -162,174 +198,193 @@ export default function Home() {
   ];
   
   /* Categories */
-  const [categories, setCategories] = useState([
-    {
-      id: 1,
-      icon: <Code className="w-12 h-12 mx-auto text-orange-600 mb-4" />,
-      title: "Web Development",
-      desc: "Learn HTML, CSS, JS, React & more"
-    },
-    {
-      id: 2,
-      icon: <Database className="w-12 h-12 mx-auto text-blue-600 mb-4" />,
-      title: "Data Science",
-      desc: "Master Python, ML & AI tools",
-    },
-    {
-      id: 3,
-      icon: <Palette className="w-12 h-12 mx-auto text-pink-600 mb-4" />,
-      title: "UI / UX Design",
-      desc: "Design beautiful interfaces"
-    },
-    {
-      id: 4,
-      icon: <Brain className="w-12 h-12 mx-auto text-green-600 mb-4" />,
-      title: "AI & Machine Learning",
-      desc: "Build intelligent systems",
-    },
-    {
-      id: 5,
-      icon: <Smartphone className="w-12 h-12 mx-auto text-purple-600 mb-4" />,
-      title: "Mobile Development",
-      desc: "Create iOS & Android apps"
-    },
-    {
-      id: 6,
-      icon: <Globe className="w-12 h-12 mx-auto text-indigo-600 mb-4" />,
-      title: "DevOps & Cloud",
-      desc: "Deploy and scale applications"
-    },
-    {
-      id: 7,
-      icon: <Monitor className="w-12 h-12 mx-auto text-yellow-600 mb-4" />,
-      title: "Game Development",
-      desc: "Build games with Unity & Unreal"
-    },
-    {
-      id: 8,
-      icon: <Camera className="w-12 h-12 mx-auto text-red-600 mb-4" />,
-      title: "Digital Marketing",
-      desc: "Grow your online presence"
-    }
-  ]);
-  
+  const [categories, setCategories] = useState([]);
+  const [categoryLoading, setCategoryLoading] = useState(false);
+  const [categoryError, setCategoryError] = useState("");
+  const [categoryLimit, setCategoryLimit] = useState(4);
+
   /* ───────── Cart helper ───────── */
+  const persistCartItems = useCallback((items) => {
+    if (typeof window === "undefined" || !Array.isArray(items)) return;
+    try {
+      localStorage.setItem("cartItems", JSON.stringify(items));
+      window.dispatchEvent(new Event("cartUpdated"));
+    } catch (error) {
+      console.error("Failed to persist cart items", error);
+    }
+  }, []);
+
   const handleAddToCart = useCallback(async (product) => {
     if (!isLoggedIn) {
       toast.error("Please login to add items to your cart!");
       return;
     }
-    
+
+    const courseId = product?._id || product?.id;
+    if (!courseId) {
+      toast.error("Unable to add this item to the cart");
+      return;
+    }
+
+    const payload = {
+      courseId,
+      title: product.title || "Untitled Course",
+      price: typeof product.price === "number" ? product.price : Number(product.price) || 0,
+      quantity: 1
+    };
+
     try {
-      // Simple cart functionality - add to localStorage
-      const existingCart = JSON.parse(localStorage.getItem('cartItems') || '[]');
-      const existingItemIndex = existingCart.findIndex(item => item._id === product._id);
-      
-      if (existingItemIndex > -1) {
-        existingCart[existingItemIndex].quantity += 1;
+      const response = await apiHelpers.cart.addItem(payload);
+      const serverItems = response?.data?.cart?.items;
+
+      if (Array.isArray(serverItems) && serverItems.length) {
+        persistCartItems(serverItems);
       } else {
-        existingCart.push({ ...product, quantity: 1 });
+        const existingCart = JSON.parse(localStorage.getItem("cartItems") || "[]");
+        const existingIndex = existingCart.findIndex((item) => (item._id || item.id || item.courseId) === courseId);
+
+        if (existingIndex > -1) {
+          existingCart[existingIndex].quantity = (existingCart[existingIndex].quantity || 1) + 1;
+        } else {
+          existingCart.push({ ...product, quantity: 1 });
+        }
+
+        persistCartItems(existingCart);
       }
-      
-      localStorage.setItem('cartItems', JSON.stringify(existingCart));
-      window.dispatchEvent(new Event("cartUpdated"));
+
       toast.success(`${product.title} added to cart!`);
     } catch (error) {
-      console.error('Cart error:', error);
-      toast.error("Failed to add to cart");
-    }
-  }, [isLoggedIn]);
-  
-  /* ───────── Mock data fetching ───────── */
-  const fetchProducts = useCallback(async (currentPage) => {
-    setLoading(true);
-    setError("");
-    
-    try {
-      // Mock API call - replace with your actual API
-      const mockProducts = [
-        {
-          _id: 1,
-          title: "Complete Web Development Course",
-          description: "Learn HTML, CSS, JavaScript, React, Node.js and build amazing web applications",
-          price: 2999,
-          images: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400",
-          brand: "TechEdu",
-          category: 1
-        },
-        {
-          _id: 2,
-          title: "Python for Data Science",
-          description: "Master Python programming and data science libraries like pandas, numpy, matplotlib",
-          price: 3499,
-          images: "https://images.unsplash.com/photo-1526379095098-d400fd0bf935?w=400",
-          brand: "DataLearn",
-          category: 2
-        },
-        {
-          _id: 3,
-          title: "UI/UX Design Masterclass",
-          description: "Learn design principles, Figma, Adobe XD and create beautiful user interfaces",
-          price: 2799,
-          images: "https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400",
-          brand: "DesignPro",
-          category: 3
-        },
-        {
-          _id: 4,
-          title: "Machine Learning with Python",
-          description: "Build ML models, work with algorithms and create intelligent applications",
-          price: 4999,
-          images: "https://images.unsplash.com/photo-1555949963-aa79dcee981c?w=400",
-          brand: "AIAcademy",
-          category: 4
-        },
-        {
-          _id: 5,
-          title: "React Native Mobile Development",
-          description: "Create cross-platform mobile apps using React Native and JavaScript",
-          price: 3299,
-          images: "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=400",
-          brand: "MobileDev",
-          category: 5
-        },
-        {
-          _id: 6,
-          title: "AWS Cloud Practitioner",
-          description: "Learn cloud computing, AWS services and deploy scalable applications",
-          price: 3799,
-          images: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=400",
-          brand: "CloudMaster",
-          category: 6
-        }
-      ];
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const startIndex = (currentPage - 1) * limit;
-      const endIndex = startIndex + limit;
-      const paginatedProducts = mockProducts.slice(startIndex, endIndex);
-      
-      console.log(`✅ Found ${paginatedProducts.length} products`);
-      
-      setFeaturedProducts(prevProducts => {
-        if (currentPage === 1) {
-          return paginatedProducts;
+      console.error("Cart API error", error);
+
+      try {
+        const existingCart = JSON.parse(localStorage.getItem("cartItems") || "[]");
+        const existingIndex = existingCart.findIndex((item) => (item._id || item.id || item.courseId) === courseId);
+
+        if (existingIndex > -1) {
+          existingCart[existingIndex].quantity = (existingCart[existingIndex].quantity || 1) + 1;
         } else {
-          return [...prevProducts, ...paginatedProducts];
+          existingCart.push({ ...product, quantity: 1 });
         }
-      });
-      
-      setHasMore(endIndex < mockProducts.length);
-      
-    } catch (error) {
-      console.error('❌ Fetch error:', error);
-      setError(`Failed to fetch products: ${error.message}`);
-    } finally {
-      setLoading(false);
+
+        persistCartItems(existingCart);
+        toast.success(`${product.title} added to cart!`);
+      } catch (localError) {
+        console.error("Cart fallback error", localError);
+        toast.error("Failed to add to cart");
+      }
     }
-  }, [limit]);
+  }, [isLoggedIn, persistCartItems]);
+  
+  const getCategoryIcon = useCallback((name, index) => {
+    const key = (name || "").toLowerCase();
+    const preset = CATEGORY_ICON_MAPPING[key] || CATEGORY_ICON_PRESETS[index % CATEGORY_ICON_PRESETS.length];
+    const className = `w-12 h-12 mx-auto ${preset.color} mb-4`;
+    return renderIcon(preset.icon, className);
+  }, []);
+
+  const fetchCategories = useCallback(async () => {
+    setCategoryLoading(true);
+    setCategoryError("");
+
+    try {
+      const response = await apiHelpers.categories.getAll();
+      const list = Array.isArray(response?.data?.data)
+        ? response.data.data
+        : Array.isArray(response?.data)
+        ? response.data
+        : [];
+
+      if (!Array.isArray(list) || !list.length) {
+        const fallback = DEFAULT_CATEGORIES.map((cat, idx) => ({
+          id: cat.id,
+          title: cat.name,
+          desc: cat.description,
+          icon: getCategoryIcon(cat.name, idx),
+          slug: cat.id
+        }));
+        setCategories(fallback);
+        return;
+      }
+
+      const mapped = list.map((cat, index) => {
+        const id = cat._id || cat.id || index;
+        const name = cat.name || `Category ${index + 1}`;
+        const slug = cat.slug || (typeof id === "number" ? id : encodeURIComponent(String(id)));
+        return {
+          id,
+          title: name,
+          desc: cat.description || "Explore curated courses designed by experts",
+          icon: getCategoryIcon(name, index),
+          slug
+        };
+      });
+
+      setCategories(mapped);
+    } catch (error) {
+      console.error("❌ Categories fetch error:", error);
+      setCategoryError(error?.response?.data?.message || error?.message || "Unable to load categories.");
+      const fallback = DEFAULT_CATEGORIES.map((cat, idx) => ({
+        id: cat.id,
+        title: cat.name,
+        desc: cat.description,
+        icon: getCategoryIcon(cat.name, idx),
+        slug: cat.id
+      }));
+      setCategories(fallback);
+      setCategoryLimit(Math.min(4, fallback.length));
+    } finally {
+      setCategoryLoading(false);
+    }
+  }, [getCategoryIcon]);
+
+  /* ───────── Product fetching (real API) ───────── */
+  const fetchProducts = useCallback(
+    async (currentPage) => {
+      setLoading(true);
+      setError("");
+
+      try {
+        const response = await apiHelpers.products.getAll({ page: currentPage, limit });
+        const fetched = Array.isArray(response?.data?.data)
+          ? response.data.data
+          : Array.isArray(response?.data)
+          ? response.data
+          : [];
+
+        if (!Array.isArray(fetched) || fetched.length === 0) {
+          if (currentPage === 1) {
+            setFeaturedProducts([]);
+          }
+          setHasMore(false);
+          return;
+        }
+
+        setFeaturedProducts((prevProducts) => {
+          if (currentPage === 1) {
+            return fetched;
+          }
+          const existingIds = new Set(prevProducts.map((item) => item._id));
+          const merged = [...prevProducts];
+          fetched.forEach((item) => {
+            if (!existingIds.has(item._id)) {
+              merged.push(item);
+            }
+          });
+          return merged;
+        });
+
+        setHasMore(fetched.length === limit);
+      } catch (error) {
+        console.error("❌ Fetch error:", error);
+        const message = error?.response?.data?.msg || error?.message || "Unable to fetch products.";
+        setError(`Failed to fetch products: ${message}`);
+        toast.error(message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [limit]
+  );
   
   const loadMoreProducts = useCallback(() => {
     if (!loading && hasMore) {
@@ -350,7 +405,22 @@ export default function Home() {
   useEffect(() => {
     fetchProducts(page);
   }, [page, fetchProducts]);
-  
+
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
+
+  useEffect(() => {
+    setCategoryLimit((limit) => Math.min(limit, Math.max(4, categories.length ? 4 : limit)));
+  }, [categories]);
+
+  const displayedCategories = useMemo(() => {
+    if (!Array.isArray(categories)) {
+      return [];
+    }
+    return categories.slice(0, categoryLimit);
+  }, [categories, categoryLimit]);
+
   useEffect(() => {
     if (typedRef.current) {
       const typed = new Typed(typedRef.current, {
@@ -381,7 +451,9 @@ export default function Home() {
     const shouldShowImage = imageUrl && isValidImage && !hasImageError;
     
     return (
-      <div className="bg-white dark:bg-gray-800 shadow-lg p-6 rounded-xl flex flex-col transition-all duration-300 hover:-translate-y-2 hover:scale-105 hover:shadow-2xl">
+      <div
+        className="bg-white dark:bg-gray-800 shadow-lg p-6 rounded-xl flex flex-col transform-gpu transition-transform duration-300 ease-out hover:-translate-y-2 hover:shadow-2xl will-change-transform"
+      >
         {/* Product Image */}
         <div className="relative mb-4 h-48 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden">
           {shouldShowImage ? (
@@ -389,7 +461,7 @@ export default function Home() {
               <img
                 src={imageUrl}
                 alt={product.title}
-                className="w-full h-full object-cover transition-transform hover:scale-105"
+                className="w-full h-full object-cover transition-transform duration-300 ease-out hover:scale-105"
                 onError={() => handleImageError(product._id, imageUrl)}
                 onLoad={() => console.log(`✅ Image loaded for "${product.title}"`)}
                 loading="lazy"
@@ -438,20 +510,23 @@ export default function Home() {
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            if (!isLoggedIn) {
+              router.push("/login");
+              return;
+            }
             handleAddToCart(product);
           }}
-          disabled={!isLoggedIn}
           className={`mt-auto font-semibold py-3 px-4 rounded-lg shadow-md transition-all duration-300 ${
             isLoggedIn
-              ? "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white hover:scale-105 hover:shadow-lg"
-              : "bg-gray-300 text-gray-500 cursor-not-allowed"
+              ? "bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black hover:scale-105 hover:shadow-lg"
+              : "bg-white text-blue-600 border border-blue-200 hover:bg-blue-50"
           }`}
         >
-          {isLoggedIn ? "Enroll Now" : "Login to Enroll"}
+          {isLoggedIn ? "Buy Now" : "Login to Buy"}
         </button>
       </div>
     );
-  }, [handleAddToCart, isLoggedIn, imageLoadErrors, handleImageError]);
+  }, [handleAddToCart, isLoggedIn, imageLoadErrors, handleImageError, router]);
   
   /* ───────── Render ───────── */
   return (
@@ -548,25 +623,49 @@ export default function Home() {
           <p className="text-xl text-center mb-12 text-gray-600 dark:text-gray-300">
             Choose from our wide range of professional courses
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-            {categories.map((cat, idx) => (
-              <Link
-                key={cat.id}
-                href={`/categories/${cat.id}`}
-                className="block bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 text-center transform transition-all duration-300 hover:-translate-y-2 hover:scale-[1.02] hover:shadow-xl group"
+          {categoryError && (
+            <div className="mx-auto mb-8 max-w-3xl rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-center text-red-700">
+              {categoryError}
+            </div>
+          )}
+          {categoryLoading && !categories.length ? (
+            <div className="flex justify-center">
+              <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-500 border-r-transparent" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {displayedCategories.map((category) => (
+                <Link
+                  key={category.id}
+                  href={`/category/${category.slug}`}
+                  className="block rounded-2xl h-full"
+                >
+                  <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-5 text-center transition-transform duration-300 hover:-translate-y-2 flex flex-col items-center h-full min-h-[220px]">
+                    <div className="flex flex-col items-center flex-grow w-full">
+                      {category.icon}
+                      <h3 className="text-xl font-bold mb-2 text-gray-900 dark:text-white">{category.title}</h3>
+                      <p className="text-gray-600 dark:text-gray-400 flex-grow line-clamp-3">{category.desc}</p>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {categories.length > 4 && (
+            <div className="mt-10 flex justify-center">
+              <button
+                onClick={() =>
+                  setCategoryLimit((limit) =>
+                    limit >= categories.length ? 4 : Math.min(categories.length, limit + 4)
+                  )
+                }
+                className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-2 text-sm font-semibold text-blue-600 shadow-md transition hover:bg-blue-50 hover:shadow-lg"
               >
-                <div className="transform transition-transform duration-300 group-hover:scale-110">
-                  {cat.icon}
-                </div>
-                <h3 className="font-bold text-lg mb-2 text-gray-900 dark:text-white">
-                  {cat.title}
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  {cat.desc}
-                </p>
-              </Link>
-            ))}
-          </div>
+                {categoryLimit >= categories.length ? "Show Less Categories" : "Load More Categories"}
+              </button>
+            </div>
+          )}
         </div>
       </section>
       
@@ -583,10 +682,10 @@ export default function Home() {
       <section className="py-16 bg-white dark:bg-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
-            Expand Your Knowledge with Premium Products
+            Enhance Your Knowledge with Premium eBooks
           </h2>
           <p className="text-xl text-center mb-12 text-gray-600 dark:text-gray-300">
-            Start your learning journey with our top-rated courses
+            Discover curated digital resources from our marketplace to supercharge your growth
           </p>
           
           {error && (
@@ -692,4 +791,3 @@ export default function Home() {
   );
 }
 
-// hi there bro 

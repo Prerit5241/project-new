@@ -53,12 +53,15 @@ export const apiHelpers = {
     create: (data) => api.post('/api/users/prerit', data),
     update: (id, data) => api.put(`/api/users/${id}`, data),
     remove: (id) => api.delete(`/api/users/${id}`),
+    getProfile: () => api.get('/api/users/profile'),
+    updateProfile: (data) => api.put('/api/users/profile', data),
   },
   
   // Categories
   categories: {
     getAll: () => api.get('/api/categories'),
     getById: (id) => api.get(`/api/categories/${id}`),
+    getCourses: (id) => api.get(`/api/categories/${id}/courses`),
   },
   
   // Courses
@@ -66,6 +69,16 @@ export const apiHelpers = {
     getAll: (params = {}) => api.get('/api/courses', { params }),
     getById: (id) => api.get(`/api/courses/${id}`),
     getFeatured: () => api.get('/api/courses/featured'),
+  },
+
+  // Cart
+  cart: {
+    get: () => api.get('/api/cart/my-cart'),
+    addItem: (data) => api.post('/api/cart/add-item', data),
+    updateItem: (courseId, data) => api.put(`/api/cart/update-item/${courseId}`, data),
+    removeItem: (courseId) => api.delete(`/api/cart/remove-item/${courseId}`),
+    clear: () => api.delete('/api/cart/clear'),
+    summary: () => api.get('/api/cart/summary'),
   },
   
   // Auth

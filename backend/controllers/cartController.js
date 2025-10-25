@@ -1,7 +1,79 @@
 const Cart = require('../models/Cart');
 const Course = require('../models/Course');
 const User = require('../models/User');
-const { logActivity } = require('../utils/activityLogger'); // Assuming you have activity logging
+const ActivityLogger = require('../services/activityLogger');
+
+const buildCartMessage = (type, userName, details) => {
+  const displayName = userName && userName.trim().length ? userName.trim() : 'Student';
+  const courseTitle = details?.courseTitle || details?.title;
+  const courseId = details?.courseId;
+  const courseLabel = courseTitle ? `"${courseTitle}"` : courseId ? `course ID ${courseId}` : 'a course';
+
+  if (type === 'CART_ADD_ITEM') {
+    return `Cart update • ${displayName} added ${courseLabel} to the cart.`;
+  }
+
+  if (type === 'CART_UPDATE_ITEM') {
+    const oldQuantity = details?.oldQuantity ?? '-';
+    const newQuantity = details?.newQuantity ?? '-';
+    return `Cart update • ${displayName} adjusted ${courseLabel} from ${oldQuantity} to ${newQuantity}.`;
+  }
+
+  if (type === 'CART_REMOVE_ITEM') {
+    return `Cart update • ${displayName} removed ${courseLabel} from the cart.`;
+  }
+
+  if (type === 'CART_CLEAR') {
+    const items = details?.itemsCleared ?? 0;
+    return `Cart update • ${displayName} cleared the cart (${items} items removed).`;
+  }
+
+  if (type === 'CART_MERGE') {
+    const merged = details?.mergedItems ?? 0;
+    const updated = details?.updatedItems ?? 0;
+    return `Cart update • ${displayName} merged their cart (${merged} added, ${updated} updated).`;
+  }
+
+  return `Cart update • ${displayName} performed action ${type.replace(/_/g, ' ').toLowerCase()}.`;
+};
+
+const logCartActivity = async (userId, type, details = {}) => {
+  if (!ActivityLogger || typeof ActivityLogger.log !== 'function') return;
+
+  try {
+    let userName;
+    let userEmail;
+    let userRole;
+
+    if (userId) {
+      const user = await User.findById(userId).select('name email role');
+      if (user) {
+        userName = user.name;
+        userEmail = user.email;
+        userRole = user.role;
+      }
+    }
+
+    const activityDetails = {
+      ...details,
+      studentName: userName || 'Student'
+    };
+
+    await ActivityLogger.log({
+      userId,
+      userEmail,
+      userName,
+      userRole: userRole || 'student',
+      type,
+      action: type,
+      message: buildCartMessage(type, userName, activityDetails),
+      details: activityDetails,
+      severity: 'low'
+    });
+  } catch (err) {
+    console.warn('Activity logger unavailable:', err?.message || err);
+  }
+};
 
 // ===== GET USER CART =====
 const getCart = async (req, res) => {
@@ -46,16 +118,16 @@ const getCart = async (req, res) => {
 // ===== ADD ITEM TO CART =====
 const addItemToCart = async (req, res) => {
   try {
-    const { courseId, title, price, quantity = 1 } = req.body;
+    const { courseId, quantity = 1 } = req.body;
     const userId = req.user.id;
 
     console.log(`🛒 Adding item to cart - User: ${userId}, Course: ${courseId}, Quantity: ${quantity}`);
 
     // Validation
-    if (!courseId || !title || !price) {
+    if (!courseId) {
       return res.status(400).json({ 
         success: false,
-        message: 'Missing required fields: courseId, title, and price are required'
+        message: 'Missing required field: courseId'
       });
     }
 
@@ -75,6 +147,9 @@ const addItemToCart = async (req, res) => {
         message: 'Course not found' 
       });
     }
+
+    const courseTitle = req.body.title || course.title;
+    const coursePrice = typeof req.body.price === 'number' ? req.body.price : course.price;
 
     // Check if user is trying to add their own course (if instructor)
     if (req.user.role === 'instructor' && course.instructor === userId) {
@@ -104,12 +179,12 @@ const addItemToCart = async (req, res) => {
     } else {
       // Add new item
       cart.items.push({ 
-        course: courseId, 
-        title: title || course.title, 
-        price: price || course.price, 
+        course: course._id, 
+        title: courseTitle, 
+        price: coursePrice, 
         quantity 
       });
-      console.log(`➕ Added new item to cart: ${title}`);
+      console.log(`➕ Added new item to cart: ${courseTitle}`);
     }
 
     await cart.save();
@@ -117,15 +192,12 @@ const addItemToCart = async (req, res) => {
     // Populate the cart before sending response
     await cart.populate('items.course', 'title price image category description instructor');
     
-    // Log activity
-    if (logActivity) {
-      await logActivity(userId, 'CART_ADD_ITEM', {
-        courseId,
-        courseTitle: title,
-        quantity,
-        cartTotal: cart.totalAmount
-      });
-    }
+    await logCartActivity(userId, 'CART_ADD_ITEM', {
+      courseId,
+      courseTitle: courseTitle,
+      quantity,
+      cartTotal: cart.totalAmount
+    });
     
     console.log(`✅ Item added to cart successfully. New total: $${cart.totalAmount}`);
     
@@ -134,9 +206,9 @@ const addItemToCart = async (req, res) => {
       message: 'Item added to cart successfully', 
       cart,
       addedItem: {
-        courseId,
-        title,
-        price,
+        courseId: course._id,
+        title: courseTitle,
+        price: coursePrice,
         quantity
       }
     });
@@ -201,16 +273,13 @@ const updateItemQuantity = async (req, res) => {
     await cart.save();
     await cart.populate('items.course', 'title price image category description instructor');
     
-    // Log activity
-    if (logActivity) {
-      await logActivity(userId, quantity === 0 ? 'CART_REMOVE_ITEM' : 'CART_UPDATE_ITEM', {
-        courseId,
-        courseTitle: itemTitle,
-        oldQuantity,
-        newQuantity: quantity,
-        cartTotal: cart.totalAmount
-      });
-    }
+    await logCartActivity(userId, quantity === 0 ? 'CART_REMOVE_ITEM' : 'CART_UPDATE_ITEM', {
+      courseId,
+      courseTitle: itemTitle,
+      oldQuantity,
+      newQuantity: quantity,
+      cartTotal: cart.totalAmount
+    });
     
     console.log(`✅ Cart updated successfully. New total: $${cart.totalAmount}`);
     
@@ -268,15 +337,12 @@ const removeItemFromCart = async (req, res) => {
     await cart.save();
     await cart.populate('items.course', 'title price image category description instructor');
     
-    // Log activity
-    if (logActivity) {
-      await logActivity(userId, 'CART_REMOVE_ITEM', {
-        courseId,
-        courseTitle: removedItem.title,
-        quantity: removedItem.quantity,
-        cartTotal: cart.totalAmount
-      });
-    }
+    await logCartActivity(userId, 'CART_REMOVE_ITEM', {
+      courseId,
+      courseTitle: removedItem.title,
+      quantity: removedItem.quantity,
+      cartTotal: cart.totalAmount
+    });
     
     console.log(`✅ Item removed from cart: ${removedItem.title}`);
     
@@ -322,13 +388,10 @@ const clearCart = async (req, res) => {
 
     await Cart.findOneAndDelete({ user: userId });
     
-    // Log activity
-    if (logActivity) {
-      await logActivity(userId, 'CART_CLEAR', {
-        itemsCleared: itemCount,
-        totalAmount: totalAmount
-      });
-    }
+    await logCartActivity(userId, 'CART_CLEAR', {
+      itemsCleared: itemCount,
+      totalAmount: totalAmount
+    });
     
     console.log(`✅ Cart cleared successfully - ${itemCount} items removed`);
     
@@ -419,15 +482,12 @@ const mergeCart = async (req, res) => {
     await cart.save();
     await cart.populate('items.course', 'title price image category description instructor');
     
-    // Log activity
-    if (logActivity) {
-      await logActivity(userId, 'CART_MERGE', {
-        mergedItems,
-        updatedItems,
-        totalItems: cart.items.length,
-        cartTotal: cart.totalAmount
-      });
-    }
+    await logCartActivity(userId, 'CART_MERGE', {
+      mergedItems,
+      updatedItems,
+      totalItems: cart.items.length,
+      totalAmount: cart.totalAmount
+    });
     
     console.log(`✅ Cart merge completed - Merged: ${mergedItems}, Updated: ${updatedItems}, Total: ${cart.items.length}`);
     

@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const { getJwtSecret } = require("../utils/jwt");
 
 module.exports = function(req, res, next) {
   try {
@@ -7,7 +8,7 @@ module.exports = function(req, res, next) {
       return res.status(401).json({ success: false, msg: "No token" });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, getJwtSecret());
     
     // ✅ Fix: Ensure proper user ID handling
     const userId = decoded.userId || decoded.id;
