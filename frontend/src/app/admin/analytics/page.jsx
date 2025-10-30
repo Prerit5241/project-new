@@ -21,7 +21,16 @@ const ACTIVITY_TYPE_META = {
   product_updated: { label: "Product Updated", color: "bg-amber-100 text-amber-700" },
   course_enrollment: { label: "Course Enrollment", color: "bg-purple-100 text-purple-700" },
   purchase: { label: "Purchase", color: "bg-pink-100 text-pink-700" },
-  CART_ADD_ITEM: { label: "Item added to card", color: "bg-blue-100 text-blue-700" }
+  CART_ADD_ITEM: { label: "Item added to card", color: "bg-blue-100 text-blue-700" },
+  coin_update: { 
+    label: "Coin Transaction", 
+    color: "bg-yellow-100 text-yellow-700",
+    format: (activity) => {
+      const action = activity.details?.action === 'add' ? 'Added' : 'Subtracted';
+      const amount = Math.abs(activity.details?.amount || 0);
+      return `${action} ${amount} coins`;
+    }
+  }
 };
 
 function MetricCard({ icon, label, value, change, subText, color, format }) {
@@ -191,34 +200,65 @@ function ActivityRow({ activity }) {
 
 export default function AnalyticsPage() {
   const [dashboardMetrics, setDashboardMetrics] = useState(null);
-  const [userMetrics, setUserMetrics] = useState(null);
-  const [productMetrics, setProductMetrics] = useState(null);
+  const [userMetrics, setUserMetrics] = useState({ totalUsers: 0, newUsers: 0, activeUsers: 0 });
+  const [productMetrics, setProductMetrics] = useState({ revenue: 0 });
   const [activities, setActivities] = useState([]);
-  const [activityStats, setActivityStats] = useState([]);
+  const [activityStats, setActivityStats] = useState({
+    totalActivities: 0,
+    activitiesByType: {}
+  });
   const [loading, setLoading] = useState(true);
   const [activityLoading, setActivityLoading] = useState(true);
   const [filterDays, setFilterDays] = useState("7");
   const [filterType, setFilterType] = useState("all");
+  
+  // Calculate metrics for the dashboard
+  const metrics = useMemo(() => ({
+    totalUsers: userMetrics?.totalUsers || 0,
+    newUsers: userMetrics?.newUsers || 0,
+    activeUsers: userMetrics?.activeUsers || 0,
+    revenue: productMetrics?.revenue || 0,
+    totalActivities: activityStats?.totalActivities || 0,
+    ...(activityStats?.activitiesByType || {})
+  }), [userMetrics, productMetrics, activityStats]);
 
   const loadActivities = useCallback(async () => {
     setActivityLoading(true);
     try {
-      const params = {
-        days: filterDays,
-        ...(filterType !== "all" ? { type: filterType } : {}),
+      // Only try to fetch recent activities for now
+      const recentRes = await apiHelpers.activities.getRecent({
         limit: 20,
+        ...(filterType !== "all" && { type: filterType })
+      });
+
+      // Handle different response formats
+      const activitiesData = Array.isArray(recentRes?.data) 
+        ? recentRes.data 
+        : Array.isArray(recentRes?.data?.data) 
+          ? recentRes.data.data 
+          : [];
+
+      setActivities(activitiesData);
+      
+      // For now, use the activities data to generate some basic stats
+      const stats = {
+        totalActivities: activitiesData.length,
+        activitiesByType: activitiesData.reduce((acc, activity) => {
+          const type = activity.type || 'unknown';
+          acc[type] = (acc[type] || 0) + 1;
+          return acc;
+        }, {})
       };
-
-      const [recentRes, statsRes] = await Promise.all([
-        apiHelpers.activities.getRecent(params),
-        apiHelpers.activities.getStats({ days: filterDays }),
-      ]);
-
-      setActivities(recentRes?.data?.data || recentRes?.data || []);
-      setActivityStats(statsRes?.data?.data || statsRes?.data || []);
+      
+      setActivityStats(stats);
     } catch (error) {
       console.error("Failed to load activities:", error);
       toast.error(error.response?.data?.message || "Failed to load recent activities");
+      setActivities([]);
+      setActivityStats({
+        totalActivities: 0,
+        activitiesByType: {}
+      });
     } finally {
       setActivityLoading(false);
     }
@@ -228,17 +268,38 @@ export default function AnalyticsPage() {
     const loadAnalytics = async () => {
       setLoading(true);
       try {
-        const [dashboardRes, userRes, productRes] = await Promise.all([
-          apiHelpers.analytics.getDashboard(),
-          apiHelpers.analytics.getUsers(),
-          apiHelpers.analytics.getProducts()
+        // Only load user and product metrics for now
+        const [userRes, productRes] = await Promise.all([
+          apiHelpers.users.list().catch(() => ({ data: [] })),
+          apiHelpers.products.getAll().catch(() => ({ data: [] }))
         ]);
 
-        setDashboardMetrics(dashboardRes?.data?.data || dashboardRes?.data || dashboardRes);
-        setUserMetrics(userRes?.data?.data || userRes?.data || userRes);
-        setProductMetrics(productRes?.data?.data || productRes?.data || productRes);
+        // Calculate basic user metrics
+        const users = Array.isArray(userRes) ? userRes : (userRes?.data || []);
+        const userMetrics = {
+          totalUsers: users.length,
+          newUsers: users.filter(user => {
+            const createdAt = user.createdAt ? new Date(user.createdAt) : null;
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            return createdAt && createdAt > weekAgo;
+          }).length,
+          activeUsers: users.length // Simple approximation for active users
+        };
+
+        // Calculate basic product metrics
+        const products = Array.isArray(productRes) ? productRes : 
+                       (Array.isArray(productRes?.data) ? productRes.data : []);
+        const productMetrics = {
+          revenue: Array.isArray(products) ? 
+            products.reduce((sum, product) => sum + (Number(product?.price) || 0), 0) : 0
+        };
+
+        setUserMetrics(userMetrics);
+        setProductMetrics(productMetrics);
       } catch (error) {
         console.error("Failed to load analytics dashboard:", error);
+        toast.error("Failed to load dashboard data");
         toast.error(error.response?.data?.message || "Failed to load analytics data");
       } finally {
         setLoading(false);
@@ -253,13 +314,23 @@ export default function AnalyticsPage() {
   }, [filterDays, filterType, loadActivities]);
 
   const activityTotals = useMemo(() => {
-    const total = activityStats.reduce((sum, item) => sum + (item.count || 0), 0);
-    return activityStats.map((item) => ({
-      type: item._id,
-      count: item.count,
+    if (!activityStats.activitiesByType) return [];
+    
+    // Convert activitiesByType object to array of {type, count} objects
+    const activitiesArray = Object.entries(activityStats.activitiesByType).map(([type, count]) => ({
+      type,
+      count: Number(count) || 0
+    }));
+    
+    // Calculate total count across all activity types
+    const total = activitiesArray.reduce((sum, item) => sum + item.count, 0);
+    
+    // Calculate percentage for each activity type
+    return activitiesArray.map(item => ({
+      ...item,
       percentage: total ? Math.round((item.count / total) * 100) : 0,
     }));
-  }, [activityStats]);
+  }, [activityStats.activitiesByType]);
 
   return (
     <div className="space-y-6">
@@ -453,8 +524,11 @@ export default function AnalyticsPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {activities.map((activity) => (
-                <ActivityRow key={activity.id} activity={activity} />
+              {activities.map((activity, index) => (
+                <ActivityRow 
+                  key={activity._id || `activity-${index}`} 
+                  activity={activity} 
+                />
               ))}
             </div>
           )}

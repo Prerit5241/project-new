@@ -130,12 +130,15 @@ app.use("/api/cart", require("./routes/cartRoutes")); // cart management
 app.use("/api/categories", require("./routes/categoryRoutes")); // category management
 app.use("/api/subcategories", require("./routes/subCategoryRoutes")); // subcategory management
 
-// ✅ Learning management routes
+// Learning management routes
 app.use("/api/courses", require("./routes/courseRoutes")); // course management
+
+// Coin management routes
+app.use("/api/coins", require("./routes/coinRoutes")); // coin management
 
 // ===== Analytics and reporting routes =====
 app.use("/api/analytics", require("./routes/analyticsRoutes")); // Analytics dashboard
-app.use("/api/activities", require("./routes/activities")); // Activity tracking and logs
+app.use("/api/activities", require("./routes/activityRouter")); // Activity tracking and logs
 
 // ===== Base health check =====
 app.get("/", (req, res) => {
@@ -152,6 +155,7 @@ app.get("/", (req, res) => {
       "/api/categories",
       "/api/subcategories", 
       "/api/courses",
+      "/api/coins",
       "/api/analytics",
       "/api/activities"
     ]
@@ -175,6 +179,7 @@ app.get("/api", (req, res) => {
       auth: "/api/auth (login, register, logout, profile)",
       users: "/api/users (user management)",
       products: "/api/products (e-commerce)",
+      coins: "/api/coins (coin management)",
       courses: "/api/courses (learning management)",
       analytics: "/api/analytics (business insights)",
       activities: "/api/activities (activity logs)"

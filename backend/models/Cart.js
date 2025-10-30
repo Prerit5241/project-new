@@ -21,6 +21,11 @@ const cartSchema = new mongoose.Schema(
           ref: 'Product',
           required: false
         },
+        type: {
+          type: String,
+          enum: ['course', 'product'],
+          default: 'course'
+        },
         title: {
           type: String,
           required: true

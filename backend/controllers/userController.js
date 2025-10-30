@@ -413,6 +413,86 @@ exports.getStudentProfile = async (req, res) => {
   }
 };
 
+// ================= UPDATE USER COINS (ADMIN ONLY) =================
+exports.updateUserCoins = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount } = req.body;
+
+    if (typeof amount !== 'number' || isNaN(amount)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid amount provided',
+      });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Initialize coins to 0 if not set
+    if (user.coins === undefined) {
+      user.coins = 0;
+    }
+
+    // Update coins (can be positive or negative)
+    user.coins += amount;
+    
+    // Ensure coins don't go below 0
+    if (user.coins < 0) {
+      user.coins = 0;
+    }
+
+    await user.save();
+
+    // Log the activity
+    try {
+      const activityType = 'coin_update';
+      const activityMessage = `Coins ${amount >= 0 ? 'added' : 'subtracted'}: ${Math.abs(amount)}`;
+      const activityDetails = {
+        amount: amount,
+        newValue: user.coins.toString(),
+        updatedBy: req.user.userId,
+        action: amount >= 0 ? 'add' : 'subtract',
+        previousBalance: (user.coins - amount).toString()
+      };
+
+      await ActivityTracker.logActivity(
+        activityType,                  // type
+        id,                           // userId
+        user.name || 'User',          // userName
+        user.role || 'user',          // userRole
+        activityMessage,              // message
+        activityDetails,              // details
+        req                          // request object for IP and User-Agent
+      );
+    } catch (logError) {
+      console.error('Failed to log activity (non-critical):', logError);
+      // Don't fail the request if logging fails
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'User coins updated successfully',
+      data: {
+        userId: user._id,
+        newBalance: user.coins,
+      },
+    });
+  } catch (error) {
+    console.error('Error updating user coins:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message,
+    });
+  }
+};
+
 // ================= UPDATE STUDENT PROFILE =================
 exports.updateStudentProfile = async (req, res) => {
   try {

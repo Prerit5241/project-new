@@ -236,28 +236,28 @@ export default function StudentLayout({ children }) {
       </div>
 
       {showLogoutConfirm && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-80 text-center animate-fade-in">
-            <h2 className="text-lg font-semibold text-gray-800 mb-3">
-              Ready to log out?
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6 w-80 text-center animate-fade-in">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+              Are you sure you want to logout?
             </h2>
-            <p className="text-sm text-gray-600 mb-6">
-              We'll be here when you're ready to keep learning.
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
+              You'll need to log in again to access your account.
             </p>
-            <div className="flex justify-center space-x-4">
+            <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-4 justify-center">
               <button
                 onClick={handleLogout}
-                className="px-5 py-2 rounded-full bg-gradient-to-r from-orange-500 to-blue-500 text-white hover:from-orange-600 hover:to-blue-600 shadow-md hover:scale-105"
+                className="px-5 py-2.5 rounded-full bg-gradient-to-r from-red-500 to-pink-500 text-white text-sm font-medium shadow-md hover:shadow-lg hover:from-red-600 hover:to-pink-600 transition-all duration-200 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                 type="button"
               >
                 Yes, Logout
               </button>
               <button
                 onClick={() => setShowLogoutConfirm(false)}
-                className="px-5 py-2 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 shadow-md hover:scale-105"
+                className="px-5 py-2.5 rounded-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 transition-all duration-200 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400"
                 type="button"
               >
-                Stay Logged In
+                Cancel
               </button>
             </div>
           </div>

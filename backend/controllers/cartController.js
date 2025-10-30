@@ -1,26 +1,32 @@
 const Cart = require('../models/Cart');
 const Course = require('../models/Course');
+const Product = require('../models/Product');
 const User = require('../models/User');
 const ActivityLogger = require('../services/activityLogger');
 
 const buildCartMessage = (type, userName, details) => {
   const displayName = userName && userName.trim().length ? userName.trim() : 'Student';
-  const courseTitle = details?.courseTitle || details?.title;
-  const courseId = details?.courseId;
-  const courseLabel = courseTitle ? `"${courseTitle}"` : courseId ? `course ID ${courseId}` : 'a course';
+  const itemType = details?.itemType === 'product' ? 'product' : 'course';
+  const itemTitle = details?.courseTitle || details?.title;
+  const itemId = details?.courseId;
+  const itemLabel = itemTitle
+    ? `"${itemTitle}" ${itemType}`
+    : itemId
+    ? `${itemType} ID ${itemId}`
+    : `a ${itemType}`;
 
   if (type === 'CART_ADD_ITEM') {
-    return `Cart update • ${displayName} added ${courseLabel} to the cart.`;
+    return `Cart update • ${displayName} added ${itemLabel} to the cart.`;
   }
 
   if (type === 'CART_UPDATE_ITEM') {
     const oldQuantity = details?.oldQuantity ?? '-';
     const newQuantity = details?.newQuantity ?? '-';
-    return `Cart update • ${displayName} adjusted ${courseLabel} from ${oldQuantity} to ${newQuantity}.`;
+    return `Cart update • ${displayName} adjusted ${itemLabel} from ${oldQuantity} to ${newQuantity}.`;
   }
 
   if (type === 'CART_REMOVE_ITEM') {
-    return `Cart update • ${displayName} removed ${courseLabel} from the cart.`;
+    return `Cart update • ${displayName} removed ${itemLabel} from the cart.`;
   }
 
   if (type === 'CART_CLEAR') {
@@ -75,6 +81,30 @@ const logCartActivity = async (userId, type, details = {}) => {
   }
 };
 
+const populateCartRelations = (cart) =>
+  cart.populate([
+    { path: 'items.course', select: 'title price image imageUrl category description instructor' },
+    { path: 'items.product', select: 'title price images description brand' }
+  ]);
+
+const idsMatch = (lhs, rhs) => {
+  if (!lhs || !rhs) return false;
+  const left = typeof lhs === 'object' && lhs !== null ? lhs.toString() : lhs;
+  const right = typeof rhs === 'object' && rhs !== null ? rhs.toString() : rhs;
+  return left === right;
+};
+
+const findCartItemIndex = (items, targetId, itemType) => {
+  const normalized = targetId?.toString();
+  if (!normalized) return -1;
+  return items.findIndex((item) => {
+    if (itemType && item.type && item.type !== itemType) return false;
+    if (item.course && (!itemType || itemType === 'course') && idsMatch(item.course, normalized)) return true;
+    if (item.product && (!itemType || itemType === 'product') && idsMatch(item.product, normalized)) return true;
+    return false;
+  });
+};
+
 // ===== GET USER CART =====
 const getCart = async (req, res) => {
   try {
@@ -82,9 +112,8 @@ const getCart = async (req, res) => {
     
     console.log(`🛒 Fetching cart for user: ${userId}`);
     
-    const cart = await Cart.findOne({ user: userId })
-      .populate('items.course', 'title price image category description instructor');
-    
+    const cart = await Cart.findOne({ user: userId });
+
     if (!cart) {
       console.log(`📭 No cart found for user: ${userId}, returning empty cart`);
       return res.json({ 
@@ -97,9 +126,16 @@ const getCart = async (req, res) => {
         message: 'Cart is empty'
       });
     }
-    
+
+    await populateCartRelations(cart);
+    cart.items.forEach((item) => {
+      if (!item.type) {
+        item.type = item.product ? 'product' : 'course';
+      }
+    });
+
     console.log(`✅ Cart fetched successfully for user: ${userId}, items: ${cart.items.length}`);
-    
+
     res.json({ 
       success: true,
       cart,
@@ -118,103 +154,153 @@ const getCart = async (req, res) => {
 // ===== ADD ITEM TO CART =====
 const addItemToCart = async (req, res) => {
   try {
-    const { courseId, quantity = 1 } = req.body;
+    const {
+      courseId,
+      productId,
+      quantity = 1,
+      type: explicitType,
+      title: titleOverride,
+      price: priceOverride
+    } = req.body;
     const userId = req.user.id;
 
-    console.log(`🛒 Adding item to cart - User: ${userId}, Course: ${courseId}, Quantity: ${quantity}`);
+    console.log(
+      `🛒 Adding item to cart - User: ${userId}, Course: ${courseId}, Product: ${productId}, Quantity: ${quantity}`
+    );
 
-    // Validation
-    if (!courseId) {
-      return res.status(400).json({ 
+    const targetId = courseId ?? productId;
+    const itemType = explicitType || (courseId ? 'course' : productId ? 'product' : null);
+
+    if (!targetId || !itemType) {
+      return res.status(400).json({
         success: false,
-        message: 'Missing required field: courseId'
+        message: 'Missing required field: courseId or productId'
       });
     }
 
     if (quantity <= 0) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
         message: 'Quantity must be greater than 0'
       });
     }
 
-    // Validate course exists
-    const course = await Course.findById(courseId);
-    if (!course) {
-      console.log(`❌ Course not found: ${courseId}`);
-      return res.status(404).json({ 
+    let itemDoc;
+    if (itemType === 'course') {
+      itemDoc = await Course.findById(targetId);
+      if (!itemDoc) {
+        console.log(`❌ Course not found: ${targetId}`);
+        return res.status(404).json({
+          success: false,
+          message: 'Course not found'
+        });
+      }
+
+      if (req.user.role === 'instructor' && itemDoc.instructor === userId) {
+        return res.status(400).json({
+          success: false,
+          message: 'You cannot add your own course to cart'
+        });
+      }
+    } else if (itemType === 'product') {
+      itemDoc = await Product.findById(targetId);
+      if (!itemDoc) {
+        console.log(`❌ Product not found: ${targetId}`);
+        return res.status(404).json({
+          success: false,
+          message: 'Product not found'
+        });
+      }
+    } else {
+      return res.status(400).json({
         success: false,
-        message: 'Course not found' 
+        message: 'Invalid item type'
       });
     }
 
-    const courseTitle = req.body.title || course.title;
-    const coursePrice = typeof req.body.price === 'number' ? req.body.price : course.price;
-
-    // Check if user is trying to add their own course (if instructor)
-    if (req.user.role === 'instructor' && course.instructor === userId) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'You cannot add your own course to cart'
-      });
-    }
+    const itemTitle = titleOverride || itemDoc.title;
+    const itemPrice = typeof priceOverride === 'number' ? priceOverride : itemDoc.price;
 
     let cart = await Cart.findOne({ user: userId });
-    
+
     if (!cart) {
       console.log(`📝 Creating new cart for user: ${userId}`);
       cart = new Cart({ user: userId, items: [] });
     }
 
-    // Check if item already exists in cart
-    const existingItemIndex = cart.items.findIndex(
-      item => item.course.toString() === courseId
-    );
+    const existingItemIndex = findCartItemIndex(cart.items, itemDoc._id, itemType);
 
     if (existingItemIndex > -1) {
-      // Update quantity
-      const oldQuantity = cart.items[existingItemIndex].quantity;
-      cart.items[existingItemIndex].quantity += quantity;
-      console.log(`📦 Updated existing item quantity from ${oldQuantity} to ${cart.items[existingItemIndex].quantity}`);
+      const existingItem = cart.items[existingItemIndex];
+      const oldQuantity = existingItem.quantity;
+      existingItem.quantity += quantity;
+      existingItem.title = itemTitle;
+      existingItem.price = itemPrice;
+      existingItem.type = itemType;
+
+      if (itemType === 'course') {
+        existingItem.course = itemDoc._id;
+      } else {
+        existingItem.product = itemDoc._id;
+        existingItem.brand = itemDoc.brand || existingItem.brand;
+      }
+
+      console.log(
+        `📦 Updated existing ${itemType} quantity from ${oldQuantity} to ${existingItem.quantity}`
+      );
     } else {
-      // Add new item
-      cart.items.push({ 
-        course: course._id, 
-        title: courseTitle, 
-        price: coursePrice, 
-        quantity 
-      });
-      console.log(`➕ Added new item to cart: ${courseTitle}`);
+      const newItem = {
+        title: itemTitle,
+        price: itemPrice,
+        quantity,
+        type: itemType
+      };
+
+      if (itemType === 'course') {
+        newItem.course = itemDoc._id;
+      } else {
+        newItem.product = itemDoc._id;
+        newItem.brand = itemDoc.brand;
+      }
+
+      cart.items.push(newItem);
+      console.log(`➕ Added new ${itemType} to cart: ${itemTitle}`);
     }
 
     await cart.save();
-    
-    // Populate the cart before sending response
-    await cart.populate('items.course', 'title price image category description instructor');
-    
+    await populateCartRelations(cart);
+    cart.items.forEach((item) => {
+      if (!item.type) {
+        item.type = item.product ? 'product' : 'course';
+      }
+    });
+
     await logCartActivity(userId, 'CART_ADD_ITEM', {
-      courseId,
-      courseTitle: courseTitle,
+      courseId: itemDoc._id,
+      courseTitle: itemTitle,
+      title: itemTitle,
+      itemType,
       quantity,
       cartTotal: cart.totalAmount
     });
-    
-    console.log(`✅ Item added to cart successfully. New total: $${cart.totalAmount}`);
-    
-    res.json({ 
+
+    console.log(`✅ Item added to cart successfully. New total: ₹${cart.totalAmount}`);
+
+    res.json({
       success: true,
-      message: 'Item added to cart successfully', 
+      message: 'Item added to cart successfully',
       cart,
       addedItem: {
-        courseId: course._id,
-        title: courseTitle,
-        price: coursePrice,
+        id: itemDoc._id,
+        type: itemType,
+        title: itemTitle,
+        price: itemPrice,
         quantity
       }
     });
   } catch (error) {
     console.error('❌ Add to cart error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: 'Failed to add item to cart',
       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
@@ -226,10 +312,10 @@ const addItemToCart = async (req, res) => {
 const updateItemQuantity = async (req, res) => {
   try {
     const { courseId } = req.params;
-    const { quantity } = req.body;
+    const { quantity, itemType } = req.body;
     const userId = req.user.id;
 
-    console.log(`🔄 Updating cart item - User: ${userId}, Course: ${courseId}, New Quantity: ${quantity}`);
+    console.log(`🔄 Updating cart item - User: ${userId}, Item: ${courseId}, Type: ${itemType}, New Quantity: ${quantity}`);
 
     if (typeof quantity !== 'number' || quantity < 0) {
       return res.status(400).json({ 
@@ -246,9 +332,7 @@ const updateItemQuantity = async (req, res) => {
       });
     }
 
-    const itemIndex = cart.items.findIndex(
-      item => item.course.toString() === courseId
-    );
+    const itemIndex = findCartItemIndex(cart.items, courseId, itemType);
 
     if (itemIndex === -1) {
       return res.status(404).json({ 
@@ -257,8 +341,10 @@ const updateItemQuantity = async (req, res) => {
       });
     }
 
-    const oldQuantity = cart.items[itemIndex].quantity;
-    const itemTitle = cart.items[itemIndex].title;
+    const item = cart.items[itemIndex];
+    const resolvedType = item.type || itemType || (item.product ? 'product' : 'course');
+    const oldQuantity = item.quantity;
+    const itemTitle = item.title;
 
     if (quantity === 0) {
       // Remove item if quantity is 0
@@ -266,16 +352,23 @@ const updateItemQuantity = async (req, res) => {
       console.log(`🗑️ Removed item from cart: ${itemTitle}`);
     } else {
       // Update quantity
-      cart.items[itemIndex].quantity = quantity;
+      item.quantity = quantity;
+      item.type = resolvedType;
       console.log(`📦 Updated item quantity from ${oldQuantity} to ${quantity}: ${itemTitle}`);
     }
 
     await cart.save();
-    await cart.populate('items.course', 'title price image category description instructor');
-    
+    await populateCartRelations(cart);
+    cart.items.forEach((entry) => {
+      if (!entry.type) {
+        entry.type = entry.product ? 'product' : 'course';
+      }
+    });
+
     await logCartActivity(userId, quantity === 0 ? 'CART_REMOVE_ITEM' : 'CART_UPDATE_ITEM', {
       courseId,
       courseTitle: itemTitle,
+      itemType: resolvedType,
       oldQuantity,
       newQuantity: quantity,
       cartTotal: cart.totalAmount
@@ -291,7 +384,8 @@ const updateItemQuantity = async (req, res) => {
         courseId,
         title: itemTitle,
         oldQuantity,
-        newQuantity: quantity
+        newQuantity: quantity,
+        type: resolvedType
       }
     });
   } catch (error) {
@@ -309,8 +403,9 @@ const removeItemFromCart = async (req, res) => {
   try {
     const { courseId } = req.params;
     const userId = req.user.id;
+    const { itemType } = req.body || {};
 
-    console.log(`🗑️ Removing item from cart - User: ${userId}, Course: ${courseId}`);
+    console.log(`🗑️ Removing item from cart - User: ${userId}, Item: ${courseId}`);
 
     const cart = await Cart.findOne({ user: userId });
     if (!cart) {
@@ -320,9 +415,7 @@ const removeItemFromCart = async (req, res) => {
       });
     }
 
-    const itemIndex = cart.items.findIndex(
-      item => item.course.toString() === courseId
-    );
+    const itemIndex = findCartItemIndex(cart.items, courseId, itemType);
 
     if (itemIndex === -1) {
       return res.status(404).json({ 
@@ -332,15 +425,22 @@ const removeItemFromCart = async (req, res) => {
     }
 
     const removedItem = cart.items[itemIndex];
+    const resolvedType = removedItem.type || itemType || (removedItem.product ? 'product' : 'course');
     cart.items.splice(itemIndex, 1);
 
     await cart.save();
-    await cart.populate('items.course', 'title price image category description instructor');
+    await populateCartRelations(cart);
+    cart.items.forEach((entry) => {
+      if (!entry.type) {
+        entry.type = entry.product ? 'product' : 'course';
+      }
+    });
     
     await logCartActivity(userId, 'CART_REMOVE_ITEM', {
       courseId,
       courseTitle: removedItem.title,
       quantity: removedItem.quantity,
+      itemType: resolvedType,
       cartTotal: cart.totalAmount
     });
     
@@ -354,7 +454,8 @@ const removeItemFromCart = async (req, res) => {
         courseId,
         title: removedItem.title,
         quantity: removedItem.quantity,
-        price: removedItem.price
+        price: removedItem.price,
+        type: resolvedType
       }
     });
   } catch (error) {
@@ -412,8 +513,6 @@ const clearCart = async (req, res) => {
     });
   }
 };
-
-// ===== MERGE LOCALSTORAGE CART WITH DATABASE CART =====
 const mergeCart = async (req, res) => {
   try {
     const { localCartItems } = req.body;
@@ -422,8 +521,15 @@ const mergeCart = async (req, res) => {
     console.log(`🔄 Merging cart for user: ${userId}, local items: ${localCartItems?.length || 0}`);
 
     if (!localCartItems || !Array.isArray(localCartItems) || localCartItems.length === 0) {
-      const cart = await Cart.findOne({ user: userId })
-        .populate('items.course', 'title price image category description instructor');
+      const cart = await Cart.findOne({ user: userId });
+      if (cart) {
+        await populateCartRelations(cart);
+        cart.items.forEach((entry) => {
+          if (!entry.type) {
+            entry.type = entry.product ? 'product' : 'course';
+          }
+        });
+      }
       return res.json({ 
         success: true,
         cart: cart || { items: [], totalAmount: 0, user: userId },
@@ -442,45 +548,79 @@ const mergeCart = async (req, res) => {
 
     // Merge local cart items with database cart
     for (const localItem of localCartItems) {
-      const courseId = localItem.courseId || localItem._id;
-      
-      if (!courseId || !localItem.title || !localItem.price) {
+      const localType = localItem.type || localItem.itemType || (localItem.productId ? 'product' : 'course');
+      const targetId =
+        localType === 'product'
+          ? localItem.productId || localItem.product || localItem._id || localItem.id
+          : localItem.courseId || localItem.course || localItem._id || localItem.id;
+
+      if (!targetId || (!localItem.title && !localItem.name)) {
         console.log(`⚠️ Skipping invalid local item:`, localItem);
         continue;
       }
 
-      // Validate course exists
-      const course = await Course.findById(courseId);
-      if (!course) {
-        console.log(`⚠️ Skipping non-existent course: ${courseId}`);
+      let itemDoc;
+      if (localType === 'course') {
+        itemDoc = await Course.findById(targetId);
+      } else {
+        itemDoc = await Product.findById(targetId);
+      }
+
+      if (!itemDoc) {
+        console.log(`⚠️ Skipping non-existent ${localType}: ${targetId}`);
         continue;
       }
 
-      const existingItemIndex = cart.items.findIndex(
-        item => item.course.toString() === courseId
-      );
+      const existingItemIndex = findCartItemIndex(cart.items, targetId, localType);
+      const normalizedPrice = typeof localItem.price === 'number' ? localItem.price : itemDoc.price;
+      const normalizedQuantity = localItem.quantity && localItem.quantity > 0 ? localItem.quantity : 1;
+      const normalizedTitle = localItem.title || localItem.name || itemDoc.title;
 
       if (existingItemIndex > -1) {
-        // Update quantity (add local quantity to existing)
-        const oldQuantity = cart.items[existingItemIndex].quantity;
-        cart.items[existingItemIndex].quantity += localItem.quantity || 1;
-        console.log(`📦 Merged quantities for ${localItem.title}: ${oldQuantity} + ${localItem.quantity} = ${cart.items[existingItemIndex].quantity}`);
+        const existing = cart.items[existingItemIndex];
+        const oldQuantity = existing.quantity;
+        existing.quantity += normalizedQuantity;
+        existing.title = normalizedTitle;
+        existing.price = normalizedPrice;
+        existing.type = localType;
+        if (localType === 'course') {
+          existing.course = itemDoc._id;
+        } else {
+          existing.product = itemDoc._id;
+          existing.brand = itemDoc.brand || existing.brand || localItem.brand;
+        }
+        console.log(
+          `📦 Merged quantities for ${existing.title}: ${oldQuantity} + ${normalizedQuantity} = ${existing.quantity}`
+        );
         updatedItems++;
       } else {
-        // Add new item from local storage
-        cart.items.push({
-          course: courseId,
-          title: localItem.title,
-          price: localItem.price,
-          quantity: localItem.quantity || 1
-        });
-        console.log(`➕ Added new item from local storage: ${localItem.title}`);
+        const newItem = {
+          title: normalizedTitle,
+          price: normalizedPrice,
+          quantity: normalizedQuantity,
+          type: localType
+        };
+
+        if (localType === 'course') {
+          newItem.course = itemDoc._id;
+        } else {
+          newItem.product = itemDoc._id;
+          newItem.brand = itemDoc.brand || localItem.brand;
+        }
+
+        cart.items.push(newItem);
+        console.log(`➕ Added new ${localType} from local storage: ${newItem.title}`);
         mergedItems++;
       }
     }
 
     await cart.save();
-    await cart.populate('items.course', 'title price image category description instructor');
+    await populateCartRelations(cart);
+    cart.items.forEach((entry) => {
+      if (!entry.type) {
+        entry.type = entry.product ? 'product' : 'course';
+      }
+    });
     
     await logCartActivity(userId, 'CART_MERGE', {
       mergedItems,
@@ -539,44 +679,57 @@ const getCartCount = async (req, res) => {
 const getCartSummary = async (req, res) => {
   try {
     const userId = req.user.id;
-    const cart = await Cart.findOne({ user: userId })
-      .populate('items.course', 'title price category instructor');
-    
+    const cart = await Cart.findOne({ user: userId });
+
     if (!cart || cart.items.length === 0) {
-      return res.json({ 
+      return res.json({
         success: true,
         summary: {
           itemCount: 0,
           totalAmount: 0,
-          categories: [],
-          instructors: []
+          categories: 0,
+          instructors: 0,
+          averagePrice: 0,
+          uniqueCourses: 0
         },
         message: 'Cart is empty'
       });
     }
 
-    // Calculate summary statistics
+    await populateCartRelations(cart);
+    cart.items.forEach((entry) => {
+      if (!entry.type) {
+        entry.type = entry.product ? 'product' : 'course';
+      }
+    });
+
     const itemCount = cart.items.reduce((total, item) => total + item.quantity, 0);
-    const categories = [...new Set(cart.items.map(item => item.course.category))];
-    const instructors = [...new Set(cart.items.map(item => item.course.instructor))];
+    const categories = cart.items
+      .filter((item) => item.type === 'course' && item.course)
+      .map((item) => item.course.category)
+      .filter(Boolean);
+    const instructors = cart.items
+      .filter((item) => item.type === 'course' && item.course)
+      .map((item) => item.course.instructor)
+      .filter(Boolean);
 
     const summary = {
       itemCount,
       totalAmount: cart.totalAmount,
       uniqueCourses: cart.items.length,
-      categories: categories.length,
-      instructors: instructors.length,
-      averagePrice: cart.totalAmount / itemCount || 0
+      categories: new Set(categories).size,
+      instructors: new Set(instructors).size,
+      averagePrice: itemCount ? cart.totalAmount / itemCount : 0
     };
-    
-    res.json({ 
+
+    res.json({
       success: true,
       summary,
       message: 'Cart summary retrieved successfully'
     });
   } catch (error) {
     console.error('❌ Get cart summary error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: 'Failed to get cart summary',
       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'

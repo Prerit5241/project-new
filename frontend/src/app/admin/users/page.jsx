@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { apiHelpers } from "@/lib/api";
+import api, { apiHelpers } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
+import { FaCoins } from "react-icons/fa";
+import { getToken } from "@/utils/auth";
 
 const ROLE_OPTIONS = [
   { value: "student", label: "Student" },
@@ -29,7 +31,7 @@ function RoleBadge({ role }) {
   );
 }
 
-function UserForm({ mode, initialData, onSubmit, onCancel, loading }) {
+function UserForm({ mode = 'create', initialData = {}, onSubmit, onCancel, loading: isLoading = false }) {
   const [formData, setFormData] = useState({
     name: initialData?.name || "",
     email: initialData?.email || "",
@@ -92,7 +94,7 @@ function UserForm({ mode, initialData, onSubmit, onCancel, loading }) {
               errors.name ? "border-red-500" : "border-gray-300"
             }`}
             placeholder="John Doe"
-            disabled={loading}
+            disabled={isLoading}
           />
           {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
         </div>
@@ -108,7 +110,7 @@ function UserForm({ mode, initialData, onSubmit, onCancel, loading }) {
               errors.email ? "border-red-500" : "border-gray-300"
             }`}
             placeholder="user@example.com"
-            disabled={loading || mode === "edit"}
+            disabled={isLoading || mode === "edit"}
           />
           {errors.email && <p className="mt-1 text-xs text-red-500">{errors.email}</p>}
         </div>
@@ -120,7 +122,7 @@ function UserForm({ mode, initialData, onSubmit, onCancel, loading }) {
             value={formData.role}
             onChange={handleChange}
             className="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            disabled={loading}
+            disabled={isLoading}
           >
             {ROLE_OPTIONS.map((role) => (
               <option key={role.value} value={role.value}>
@@ -143,7 +145,7 @@ function UserForm({ mode, initialData, onSubmit, onCancel, loading }) {
               errors.password ? "border-red-500" : "border-gray-300"
             }`}
             placeholder={mode === "create" ? "••••••••" : "Leave blank to keep current password"}
-            disabled={loading}
+            disabled={isLoading}
           />
           {errors.password && <p className="mt-1 text-xs text-red-500">{errors.password}</p>}
         </div>
@@ -154,16 +156,16 @@ function UserForm({ mode, initialData, onSubmit, onCancel, loading }) {
           type="button"
           onClick={onCancel}
           className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          disabled={loading}
+          disabled={isLoading}
         >
           Cancel
         </button>
         <button
           type="submit"
           className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
-          disabled={loading}
+          disabled={isLoading}
         >
-          {loading ? (
+          {isLoading ? (
             <span className="flex items-center gap-2">
               <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -185,95 +187,57 @@ function UserForm({ mode, initialData, onSubmit, onCancel, loading }) {
   );
 }
 
-function DeleteDialog({ user, onConfirm, onCancel, loading }) {
-  if (!user) return null;
+function UserRow({ user, onEdit, onDelete, onManageCoins }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="flex items-center gap-3">
-          <div className="rounded-full bg-red-100 p-2 text-red-600">
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Delete User</h3>
-            <p className="text-sm text-gray-500">
-              Are you sure you want to delete {user.name || user.email}? This action cannot be undone.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-6 flex items-center justify-end gap-3">
-          <button
-            onClick={onCancel}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            disabled={loading}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onConfirm(user)}
-            className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-400"
-            disabled={loading}
-          >
-            {loading ? (
-              <span className="flex items-center gap-2">
-                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                </svg>
-                Deleting...
+    <tr key={user.id} className="hover:bg-gray-50">
+      <td className="whitespace-nowrap px-6 py-4">
+        <div className="flex items-center">
+          <div className="h-10 w-10 flex-shrink-0">
+            <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+              <span className="text-blue-600 font-medium">
+                {user.name?.charAt(0) || 'U'}
               </span>
-            ) : (
-              <>
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                Delete User
-              </>
-            )}
-          </button>
+            </div>
+          </div>
+          <div className="ml-4">
+            <div className="font-medium text-gray-900">{user.name}</div>
+            <div className="text-gray-500">{user.email}</div>
+          </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function UserRow({ user, onEdit, onDelete }) {
-  return (
-    <tr className="hover:bg-gray-50 transition-colors">
-      <td className="px-6 py-4 whitespace-nowrap">
-        <div className="text-sm font-semibold text-gray-900">{user.name || "Unnamed"}</div>
-        <div className="text-sm text-gray-500">{user.email}</div>
       </td>
-      <td className="px-6 py-4 whitespace-nowrap">
+      <td className="whitespace-nowrap px-6 py-4">
         <RoleBadge role={user.role} />
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-        ID: {user._id}
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-        <div className="flex items-center justify-end gap-2">
-          <button
-            onClick={() => onEdit(user)}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 transition-all hover:border-blue-500 hover:text-blue-600"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-            </svg>
-            Edit
-          </button>
-          <button
-            onClick={() => onDelete(user)}
-            className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 transition-all hover:bg-red-50"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-            Delete
-          </button>
+      <td className="whitespace-nowrap px-6 py-4">
+        <div className="flex items-center">
+          <FaCoins className="text-yellow-500 mr-1" />
+          <span className="font-medium">{user.coins || 0}</span>
         </div>
+      </td>
+      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+        {new Date(user.createdAt || user.joined || Date.now()).toLocaleDateString()}
+      </td>
+      <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium space-x-3">
+        <button
+          onClick={() => onEdit(user)}
+          className="text-blue-600 hover:text-blue-900"
+        >
+          Edit
+        </button>
+        <button
+          onClick={() => onDelete(user)}
+          className="text-red-600 hover:text-red-900"
+        >
+          Delete
+        </button>
+        <button
+          onClick={() => onManageCoins(user)}
+          className="text-yellow-600 hover:text-yellow-800"
+          title="Manage Coins"
+        >
+          <FaCoins className="inline mr-1" />
+          Manage
+        </button>
       </td>
     </tr>
   );
@@ -283,90 +247,216 @@ export default function UsersPage() {
   const router = useRouter();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [editUser, setEditUser] = useState(null);
-  const [deleteUser, setDeleteUser] = useState(null);
-  const [actionLoading, setActionLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, user: null });
+  const [coinDialog, setCoinDialog] = useState({ open: false, user: null, amount: '', action: 'add' });
   const [roleFilter, setRoleFilter] = useState("all");
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     loadUsers();
   }, []);
 
   const loadUsers = async () => {
-    setLoading(true);
-    setError("");
+    setIsLoading(true);
     try {
-      const res = await apiHelpers.users.list();
-      const data = res?.data?.data || res?.data || [];
-      setUsers(Array.isArray(data) ? data : []);
+      console.log('Fetching users from:', process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000');
+      
+      // Log the exact URL being called
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/users/prerit`;
+      console.log('Full API URL:', apiUrl);
+      
+      // Make the API call directly to see the raw response
+      const response = await fetch(apiUrl, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      // Log the raw response
+      const responseData = await response.json();
+      console.log('Raw API response:', responseData);
+      
+      // Use the helper function but with better error handling
+      const usersData = await apiHelpers.users.list();
+      console.log('Processed users data:', usersData);
+      
+      if (!usersData || !Array.isArray(usersData)) {
+        console.error('Expected an array of users but got:', usersData);
+        toast.error('Invalid response format from server');
+        setUsers([]);
+        return;
+      }
+      
+      // Transform the data to ensure consistent structure
+      const formattedUsers = usersData.map(user => {
+        const formattedUser = {
+          id: user._id || user.id,
+          _id: user._id || user.id, // Keep _id for backend operations
+          name: user.name || 'No Name',
+          email: user.email || 'No Email',
+          role: user.role || 'student',
+          coins: user.coins || 0,
+          preferences: user.preferences || {},
+          ...user // Spread the rest of the user data
+        };
+        console.log('Formatted user:', formattedUser);
+        return formattedUser;
+      });
+      
+      console.log('Setting users state with:', formattedUsers.length, 'users');
+      setUsers(formattedUsers);
+      
+      // Debug: Check if users are set in state after a small delay
+      setTimeout(() => {
+        console.log('Current users in state:', users);
+      }, 1000);
     } catch (err) {
       console.error("Error loading users:", err);
-      setError(err.response?.data?.message || err.message || "Failed to load users");
+      toast.error(`Failed to load users: ${err.message}`);
+      setUsers([]);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   const filteredUsers = useMemo(() => {
-    return users.filter((user) => {
-      const matchesSearch =
-        user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.email?.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesRole = roleFilter === "all" || user.role === roleFilter;
-      return matchesSearch && matchesRole;
-    });
+    let result = [...users];
+    
+    // Apply search filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(
+        (user) =>
+          user.name?.toLowerCase().includes(term) ||
+          user.email?.toLowerCase().includes(term) ||
+          user.role?.toLowerCase().includes(term) ||
+          user.coins?.toString().includes(term)
+      );
+    }
+    
+    // Apply role filter
+    if (roleFilter && roleFilter !== 'all') {
+      result = result.filter(user => user.role === roleFilter);
+    }
+    
+    return result;
   }, [users, searchTerm, roleFilter]);
 
   const handleCreate = async (data) => {
-    setActionLoading(true);
+    setIsLoading(true);
     try {
       await apiHelpers.users.create(data);
       toast.success("User created successfully");
-      setShowCreateForm(false);
+      setShowForm(false);
+      setIsCreating(false);
       await loadUsers();
     } catch (err) {
       console.error("Create user error:", err);
       toast.error(err.response?.data?.message || err.message || "Failed to create user");
     } finally {
-      setActionLoading(false);
+      setIsLoading(false);
     }
   };
 
   const handleUpdate = async (data) => {
-    if (!editUser) return;
-    setActionLoading(true);
+    if (!currentUser) return;
+    setIsLoading(true);
     try {
       const payload = { ...data };
       if (!payload.password) {
         delete payload.password;
       }
-      await apiHelpers.users.update(editUser._id, payload);
+      await apiHelpers.users.update(currentUser._id || currentUser.id, payload);
       toast.success("User updated successfully");
-      setEditUser(null);
+      setCurrentUser(null);
       await loadUsers();
     } catch (err) {
       console.error("Update user error:", err);
       toast.error(err.response?.data?.message || err.message || "Failed to update user");
     } finally {
-      setActionLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const handleDelete = async (user) => {
-    setActionLoading(true);
+  const handleDelete = async () => {
+    if (!deleteDialog.user) return;
+    setIsLoading(true);
     try {
-      await apiHelpers.users.remove(user._id);
+      const userId = deleteDialog.user._id || deleteDialog.user.id;
+      if (!userId) {
+        throw new Error('User ID is missing');
+      }
+      
+      // Use the correct API helper method
+      await apiHelpers.users.remove(userId);
+      
       toast.success("User deleted successfully");
-      setDeleteUser(null);
+      setDeleteDialog({ open: false, user: null });
       await loadUsers();
     } catch (err) {
       console.error("Delete user error:", err);
-      toast.error(err.response?.data?.message || err.message || "Failed to delete user");
+      const errorMessage = err.response?.data?.message || err.message || "Failed to delete user";
+      console.error('Error details:', errorMessage);
+      toast.error(errorMessage);
     } finally {
-      setActionLoading(false);
+      setIsLoading(false);
+    }
+  };
+
+  const handleCoinUpdate = async () => {
+    if (!coinDialog.user || !coinDialog.amount || isNaN(coinDialog.amount)) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+
+    const amount = parseInt(coinDialog.amount);
+    if (amount <= 0) {
+      toast.error('Amount must be greater than 0');
+      return;
+    }
+
+    try {
+      const userId = coinDialog?.user?._id || coinDialog?.user?.id;
+      if (!userId) {
+        throw new Error('Could not find user ID. Please refresh the page and try again.');
+      }
+      
+      // Determine the final amount (positive for add, negative for subtract)
+      const amountToUpdate = coinDialog.action === 'add' ? amount : -amount;
+      
+      // Use the API helper to update coins
+      const response = await api.put(`/api/users/${userId}/coins`, {
+        amount: amountToUpdate,
+        reason: `Admin ${coinDialog.action}ed ${amount} coins`
+      });
+
+      if (response.data && response.data.success) {
+        // Update the local state with the new coin balance
+        const updatedUsers = users.map(user => {
+          if (user._id === userId || user.id === userId) {
+            return {
+              ...user,
+              coins: (user.coins || 0) + amountToUpdate
+            };
+          }
+          return user;
+        });
+        
+        setUsers(updatedUsers);
+        toast.success(`Successfully ${coinDialog.action === 'add' ? 'added' : 'subtracted'} ${amount} coins`);
+        setCoinDialog({ open: false, user: null, amount: '', action: 'add' });
+      } else {
+        throw new Error(response.data?.message || 'Failed to update coins');
+      }
+    } catch (error) {
+      console.error('Error updating coins:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to update coins';
+      toast.error(errorMessage);
     }
   };
 
@@ -387,10 +477,14 @@ export default function UsersPage() {
               {users.length} total users
             </div>
             <button
-              onClick={() => setShowCreateForm(true)}
+              onClick={() => {
+                setShowForm(true);
+                setIsCreating(true);
+                setCurrentUser(null);
+              }}
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-blue-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:scale-[1.02] hover:from-orange-600 hover:to-blue-600"
             >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
               </svg>
               Add New User
@@ -438,23 +532,12 @@ export default function UsersPage() {
           </button>
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <div className="flex min-h-[240px] items-center justify-center">
             <div className="flex flex-col items-center gap-3">
               <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-100 border-t-blue-500"></div>
               <p className="text-sm text-gray-500">Loading users...</p>
             </div>
-          </div>
-        ) : error ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
-            <h3 className="text-lg font-semibold text-red-700">Failed to load users</h3>
-            <p className="mt-2 text-sm text-red-600">{error}</p>
-            <button
-              onClick={loadUsers}
-              className="mt-4 inline-flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 transition-all hover:bg-red-100"
-            >
-              Try again
-            </button>
           </div>
         ) : filteredUsers.length === 0 ? (
           <div className="flex min-h-[240px] items-center justify-center">
@@ -476,11 +559,14 @@ export default function UsersPage() {
                   <th className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                     User
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Role
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                    User ID
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Coins
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Joined
                   </th>
                   <th className="px-6 py-4 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
                     Actions
@@ -492,8 +578,13 @@ export default function UsersPage() {
                   <UserRow
                     key={user._id ?? user.id ?? `user-${index}`}
                     user={user}
-                    onEdit={setEditUser}
-                    onDelete={setDeleteUser}
+                    onEdit={(user) => {
+                      setCurrentUser(user);
+                      setShowForm(true);
+                      setIsCreating(false);
+                    }}
+                    onDelete={(user) => setDeleteDialog({ open: true, user })}
+                    onManageCoins={(user) => setCoinDialog({ open: true, user, amount: '', action: 'add' })}
                   />
                 ))}
               </tbody>
@@ -502,53 +593,123 @@ export default function UsersPage() {
         )}
       </div>
 
-      {(showCreateForm || editUser) && (
+      {showForm && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
-          <div className="relative w-full max-w-3xl rounded-3xl bg-white p-6 shadow-2xl">
-            <button
-              onClick={() => {
-                setShowCreateForm(false);
-                setEditUser(null);
-              }}
-              className="absolute right-4 top-4 text-gray-400 transition hover:text-gray-600"
-            >
-              <span className="sr-only">Close</span>
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+          <div className="w-full max-w-3xl rounded-3xl bg-white p-6 shadow-2xl">
 
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900">
-                {showCreateForm ? "Create New User" : "Edit User"}
+                {isCreating ? "Create New User" : "Edit User"}
               </h2>
               <p className="text-sm text-gray-500">
-                {showCreateForm
+                {isCreating
                   ? "Fill out the details below to add a new user with the desired role."
                   : "Update the user details and role. Leave password blank to keep the current password."}
               </p>
             </div>
 
             <UserForm
-              mode={showCreateForm ? "create" : "edit"}
-              initialData={editUser}
-              onSubmit={showCreateForm ? handleCreate : handleUpdate}
+              mode={isCreating ? "create" : "edit"}
+              initialData={currentUser}
+              onSubmit={isCreating ? handleCreate : handleUpdate}
               onCancel={() => {
-                setShowCreateForm(false);
-                setEditUser(null);
+                setShowForm(false);
+                setCurrentUser(null);
+                setIsCreating(false);
               }}
-              loading={actionLoading}
+              loading={isLoading}
             />
           </div>
         </div>
       )}
 
-      <DeleteDialog
-        user={deleteUser}
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteUser(null)}
-        loading={actionLoading}
-      />
+      {/* Coin Management Dialog */}
+      {coinDialog.open && coinDialog.user && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-medium text-gray-900">Manage {coinDialog.user.name}'s Coins</h3>
+            <p className="mt-2 text-sm text-gray-600">
+              Current balance: <span className="font-medium">{coinDialog.user.coins || 0} coins</span>
+            </p>
+            
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {coinDialog.action === 'add' ? 'Add' : 'Subtract'} Coins
+                </label>
+                <div className="flex rounded-md shadow-sm">
+                  <div className="relative flex-grow focus-within:z-10">
+                    <input
+                      type="number"
+                      min="1"
+                      value={coinDialog.amount}
+                      onChange={(e) => setCoinDialog({...coinDialog, amount: e.target.value})}
+                      className="block w-full rounded-l-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
+                      placeholder="Enter amount"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCoinDialog({...coinDialog, action: coinDialog.action === 'add' ? 'subtract' : 'add'})}
+                    className="relative -ml-px inline-flex items-center gap-x-1.5 rounded-r-md px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                  >
+                    {coinDialog.action === 'add' ? 'Add' : 'Subtract'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => setCoinDialog({ open: false, user: null, amount: '', action: 'add' })}
+                disabled={isLoading}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCoinUpdate}
+                disabled={isLoading || !coinDialog.amount}
+                className="rounded-lg border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+              >
+                {isLoading ? 'Updating...' : 'Update Coins'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete User Dialog */}
+      {deleteDialog.open && deleteDialog.user && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-medium text-gray-900">Delete User</h3>
+            <p className="mt-2 text-sm text-gray-600">
+              Are you sure you want to delete {deleteDialog.user.name || 'this user'}? This action cannot be undone.
+            </p>
+            <div className="mt-6 flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => setDeleteDialog({ open: false, user: null })}
+                disabled={isLoading}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={isLoading}
+                className="rounded-lg border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50"
+              >
+                {isLoading ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

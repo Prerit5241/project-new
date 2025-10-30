@@ -16,13 +16,23 @@ const formatCurrency = (value) => {
   });
 };
 
-const getItemCourseId = (item) => {
+const getItemId = (item) => {
   if (!item) return null;
   const course = item.course;
+  const product = item.product;
   if (course && typeof course === "object") {
     return course._id || course.id || course.courseId || null;
   }
-  return item.courseId || course || item._id || item.id || null;
+  if (product && typeof product === "object") {
+    return product._id || product.id || product.productId || null;
+  }
+  return item.courseId || item.productId || product || course || item._id || item.id || null;
+};
+
+const getItemType = (item) => {
+  if (!item) return "course";
+  if (item.product || item.productId) return "product";
+  return "course";
 };
 
 const calculateTotal = (items) =>
@@ -38,14 +48,39 @@ const calculateTotal = (items) =>
   }, 0);
 
 const CartItem = ({ item, onQuantityChange, onRemove }) => {
-  const { course } = item;
-  const title = course?.title || item.title || "Untitled Course";
-  const description = course?.description || "Enhance your skills with this curated learning path.";
-  const price = typeof item.price === "number" ? item.price : course?.price || 0;
-  const imageUrl = course?.image || "/images/course-placeholder.jpg";
-  const instructor = course?.instructor?.name || course?.instructor || "Expert Instructor";
+  const { course, product } = item;
+  const itemType = getItemType(item);
   const quantity = item.quantity || 1;
-  const courseId = getItemCourseId(item);
+  const itemId = getItemId(item);
+
+  const title = product?.title || course?.title || item.title || "Untitled Item";
+  const description =
+    product?.description || course?.description || "Explore this curated learning resource.";
+  const price =
+    typeof item.price === "number"
+      ? item.price
+      : typeof product?.price === "number"
+      ? product.price
+      : typeof course?.price === "number"
+      ? course.price
+      : 0;
+
+  const productImage = Array.isArray(product?.images) && product.images.length ? product.images[0] : null;
+  const courseImage = course?.image || course?.imageUrl;
+  const imageUrl =
+    productImage ||
+    (typeof product?.image === "string" ? product.image : null) ||
+    courseImage ||
+    item.image ||
+    "/images/course-placeholder.jpg";
+
+  const instructor = course?.instructor?.name || course?.instructor || "Expert Instructor";
+  const brand = product?.brand || item.brand || "Premium Partner";
+
+  const metaBadge =
+    itemType === "course"
+      ? { icon: ShieldCheck, text: "Lifetime access guaranteed" }
+      : { icon: ShoppingCart, text: "Instant digital download" };
 
   return (
     <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 p-4 bg-white dark:bg-gray-800 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200">
@@ -61,7 +96,9 @@ const CartItem = ({ item, onQuantityChange, onRemove }) => {
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white line-clamp-2">{title}</h3>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">By {instructor}</p>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {itemType === "course" ? `By ${instructor}` : `Brand: ${brand}`}
+            </p>
           </div>
           <div className="text-lg font-semibold text-orange-500">
             {formatCurrency(price)}
@@ -74,13 +111,13 @@ const CartItem = ({ item, onQuantityChange, onRemove }) => {
 
         <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="inline-flex items-center gap-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-full text-sm">
-            <ShieldCheck className="w-4 h-4 text-green-500" />
-            Lifetime access guaranteed
+            <metaBadge.icon className="w-4 h-4 text-green-500" />
+            {metaBadge.text}
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
               <button
-                onClick={() => onQuantityChange(courseId, Math.max(quantity - 1, 0))}
+                onClick={() => onQuantityChange(itemId, itemType, Math.max(quantity - 1, 0))}
                 className="px-3 py-1 text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
                 title="Decrease quantity"
               >
@@ -90,7 +127,7 @@ const CartItem = ({ item, onQuantityChange, onRemove }) => {
                 {quantity}
               </span>
               <button
-                onClick={() => onQuantityChange(courseId, quantity + 1)}
+                onClick={() => onQuantityChange(itemId, itemType, quantity + 1)}
                 className="px-3 py-1 text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
                 title="Increase quantity"
               >
@@ -98,7 +135,7 @@ const CartItem = ({ item, onQuantityChange, onRemove }) => {
               </button>
             </div>
             <button
-              onClick={() => onRemove(courseId)}
+              onClick={() => onRemove(itemId, itemType)}
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
             >
               <Trash2 className="w-4 h-4" />
@@ -173,15 +210,15 @@ export default function CartPage() {
     fetchCart();
   }, [authLoading, isLoggedIn, fetchCart, router]);
 
-  const handleQuantityChange = useCallback(async (courseId, nextQuantity) => {
-    if (!courseId) return;
-    setUpdatingItemId(courseId);
+  const handleQuantityChange = useCallback(async (itemId, itemType, nextQuantity) => {
+    if (!itemId) return;
+    setUpdatingItemId(itemId);
 
     try {
       setCartItems((prevItems) => {
         const updated = prevItems.reduce((acc, item) => {
-          const id = getItemCourseId(item);
-          if (id !== courseId) {
+          const id = getItemId(item);
+          if (id !== itemId) {
             acc.push(item);
             return acc;
           }
@@ -195,9 +232,9 @@ export default function CartPage() {
       });
 
       if (nextQuantity <= 0) {
-        await apiHelpers.cart.removeItem(courseId);
+        await apiHelpers.cart.removeItem(itemId);
       } else {
-        await apiHelpers.cart.updateItem(courseId, { quantity: nextQuantity });
+        await apiHelpers.cart.updateItem(itemId, { quantity: nextQuantity, itemType });
       }
     } catch (err) {
       console.warn("Cart update sync failed", err?.message || err);
@@ -206,13 +243,13 @@ export default function CartPage() {
     }
   }, []);
 
-  const handleRemoveItem = useCallback(async (courseId) => {
-    if (!courseId) return;
-    setUpdatingItemId(courseId);
+  const handleRemoveItem = useCallback(async (itemId, itemType) => {
+    if (!itemId) return;
+    setUpdatingItemId(itemId);
 
     try {
-      setCartItems((prevItems) => prevItems.filter((item) => getItemCourseId(item) !== courseId));
-      await apiHelpers.cart.removeItem(courseId);
+      setCartItems((prevItems) => prevItems.filter((item) => getItemId(item) !== itemId));
+      await apiHelpers.cart.removeItem(itemId, { data: { itemType } });
     } catch (err) {
       console.warn("Cart removal sync failed", err?.message || err);
     } finally {
@@ -241,7 +278,12 @@ export default function CartPage() {
     if (!hasRestoredRef.current) return;
     if (typeof window === "undefined") return;
     try {
-      localStorage.setItem("cartItems", JSON.stringify(cartItems));
+      if (cartItems.length) {
+        localStorage.setItem("cartItems", JSON.stringify(cartItems));
+      } else {
+        localStorage.removeItem("cartItems");
+      }
+      window.dispatchEvent(new Event("cartUpdated"));
     } catch (error) {
       console.error("Failed to persist cart", error);
     }
@@ -280,10 +322,15 @@ export default function CartPage() {
           </div>
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700"
+            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-full border border-indigo-100 bg-white px-5 py-2 text-sm font-semibold text-indigo-600 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg dark:border-indigo-500/30 dark:bg-indigo-950/40 dark:text-indigo-200"
           >
-            <ArrowLeft className="w-4 h-4" />
-            Continue Shopping
+            <span className="pointer-events-none absolute inset-0 translate-y-[110%] bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-80 transition-transform duration-500 ease-out group-hover:translate-y-0" />
+            <span className="relative inline-flex h-7 w-7 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 transition-colors duration-300 group-hover:bg-white group-hover:text-indigo-500 dark:bg-indigo-900 dark:text-indigo-200">
+              <ArrowLeft className="h-4 w-4" />
+            </span>
+            <span className="relative text-indigo-600 transition-colors duration-300 group-hover:text-white dark:text-indigo-200">
+              Continue Shopping
+            </span>
           </Link>
         </div>
 

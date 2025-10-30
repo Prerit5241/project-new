@@ -52,4 +52,12 @@ router.get(
   userController.getUserById
 );
 
+// ======= UPDATE USER COINS (ADMIN ONLY) =======
+router.put(
+  '/:id/coins',
+  auth,
+  auth.authorize(['admin']),
+  userController.updateUserCoins
+);
+
 module.exports = router;

@@ -111,17 +111,57 @@ export default function AdminPage() {
           }
         }
       }
+      
+      // Parse details for coin_update activities
+      let details = {};
+      try {
+        if (activity.details) {
+          details = typeof activity.details === 'string' 
+            ? JSON.parse(activity.details) 
+            : activity.details;
+        }
+      } catch (e) {
+        console.error('Error parsing activity details:', e);
+      }
 
       const normalizedType = type === "login" ? "user_login" : type === "logout" ? "user_logout" : type;
+      
+      // Handle coin_update specifically
+      if (normalizedType === 'coin_update') {
+        const amount = parseInt(details.amount) || 0;
+        const isAdd = amount >= 0;
+        const absAmount = Math.abs(amount);
+        const action = isAdd ? 'add' : 'subtract';
+        
+        return {
+          id: activity.id || activity._id || `coin-update-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          type: 'coin_update',
+          userName: activity.userName || details.userName || 'User',
+          userId: activity.userId || details.userId || 'N/A',
+          userRole: activity.userRole || details.userRole || 'user',
+          action,
+          amount: absAmount,
+          newBalance: details.newValue || details.newBalance || 'N/A',
+          time: timeLabel,
+          details: details,
+          icon: isAdd ? '💰' : '💸',
+          title: `Coins ${isAdd ? 'added' : 'subtracted'}: ${absAmount}`,
+          subtitle: [activity.userName, activity.userRole].filter(Boolean).join(' • '),
+          description: `New balance: ${details.newValue || 'N/A'}`
+        };
+      }
+      
+      // Handle other activity types
       const rawTitle = activity.message || activity.action || "Platform activity";
       const rawDescription = activity.details || activity.description;
       const actorName =
         activity.userName ||
         activity.user ||
         activity.actor ||
-        (typeof activity.details === "object" && activity.details
-          ? activity.details.userName || activity.details.studentName || activity.details.name
-          : undefined);
+        details.userName || 
+        details.studentName || 
+        details.name ||
+        undefined;
 
       const parsePossibleJson = (value) => {
         if (typeof value !== "string") return undefined;
@@ -327,57 +367,92 @@ export default function AdminPage() {
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        {/* Recent Orders */}
+        {/* Coin Transaction History */}
         <div className="xl:col-span-2">
           <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 hover:shadow-2xl transition-all duration-300">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-2xl font-bold text-gray-800 mb-1">Recent Orders</h2>
-                <p className="text-gray-600">Latest customer orders and transactions</p>
+                <h2 className="text-2xl font-bold text-gray-800 mb-1">Coin Transactions</h2>
+                <p className="text-gray-600">Recent coin credit/debit history</p>
               </div>
-              <button className="bg-gradient-to-r from-orange-500 to-blue-500 text-white px-6 py-3 rounded-xl font-semibold hover:from-orange-600 hover:to-blue-600 transition-all duration-300 shadow-lg hover:scale-105">
-                View All Orders
+              <button 
+                onClick={loadActivities}
+                className="bg-gradient-to-r from-orange-500 to-blue-500 text-white px-6 py-3 rounded-xl font-semibold hover:from-orange-600 hover:to-blue-600 transition-all duration-300 shadow-lg hover:scale-105"
+                disabled={activitiesLoading}
+              >
+                {activitiesLoading ? 'Refreshing...' : 'Refresh'}
               </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-200">
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Order ID</th>
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Customer</th>
+                    <th className="text-left py-4 px-4 font-semibold text-gray-700">User</th>
+                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Action</th>
                     <th className="text-left py-4 px-4 font-semibold text-gray-700">Amount</th>
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Status</th>
+                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Old Balance</th>
+                    <th className="text-left py-4 px-4 font-semibold text-gray-700">New Balance</th>
+                    <th className="text-left py-4 px-4 font-semibold text-gray-700">By</th>
                     <th className="text-left py-4 px-4 font-semibold text-gray-700">Date</th>
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {recentData.orders.map(order => (
-                    <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors duration-200">
-                      <td className="py-4 px-4 font-mono text-sm font-semibold text-blue-600">{order.id}</td>
-                      <td className="py-4 px-4 font-medium text-gray-800">{order.customer}</td>
-                      <td className="py-4 px-4 font-bold text-green-600">₹{order.amount.toLocaleString()}</td>
-                      <td className="py-4 px-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusStyle(order.status)}`}>
-                          {order.status}
-                        </span>
-                      </td>
-                      <td className="py-4 px-4 text-sm text-gray-500">{order.date}</td>
-                      <td className="py-4 px-4">
-                        <div className="flex gap-2">
-                          <button className="text-blue-600 hover:text-blue-800 text-sm font-medium hover:bg-blue-50 px-2 py-1 rounded transition-colors">
-                            View
-                          </button>
-                          <button className="text-green-600 hover:text-green-800 text-sm font-medium hover:bg-green-50 px-2 py-1 rounded transition-colors">
-                            Edit
-                          </button>
-                          <button className="text-red-600 hover:text-red-800 text-sm font-medium hover:bg-red-50 px-2 py-1 rounded transition-colors">
-                            Delete
-                          </button>
-                        </div>
+                  {formattedActivities
+                    .filter(activity => activity.type === 'coin_update')
+                    .slice(0, 5)
+                    .map((activity) => {
+                      const details = activity.details || {};
+                      const amount = parseInt(details.amount) || 0;
+                      const isAdd = amount >= 0;
+                      const absAmount = Math.abs(amount);
+                      const newBalance = parseInt(details.newValue || details.newBalance) || 0;
+                      const oldBalance = isAdd ? (newBalance - absAmount) : (newBalance + absAmount);
+                      const adminNote = details.adminNote || '';
+
+                      return (
+                        <tr key={activity.id} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="py-4 px-4">
+                            <div className="flex items-center">
+                              <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-medium mr-3">
+                                {activity.userName?.charAt(0) || 'U'}
+                              </div>
+                              <div>
+                                <div className="font-medium">{activity.userName || 'User'}</div>
+                                <div className="text-xs text-gray-500">id: {activity.userId || 'N/A'}</div>
+                                <div className="text-xs text-purple-600 font-medium">
+                                  {activity.userRole === 'admin' ? 'Admin' : 'Student'}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-4 px-4">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              isAdd ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {isAdd ? 'Credited' : 'Debited'}
+                            </span>
+                          </td>
+                          <td className={`py-4 px-4 font-bold ${isAdd ? 'text-green-600' : 'text-red-600'}`}>
+                            {isAdd ? '+' : '-'}{absAmount}
+                          </td>
+                          <td className="py-4 px-4 font-mono">{oldBalance}</td>
+                          <td className="py-4 px-4 font-mono">{newBalance}</td>
+                          <td className="py-4 px-4 text-sm text-gray-600">
+                            {activity.details?.adminName || 'Admin'}
+                          </td>
+                          <td className="py-4 px-4 text-sm text-gray-500">
+                            {activity.time || 'Just now'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  {!formattedActivities.some(a => a.type === 'coin_update') && (
+                    <tr>
+                      <td colSpan="7" className="py-8 text-center text-gray-500">
+                        No coin transactions found. Try refreshing the data.
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>

@@ -173,6 +173,13 @@ const userSchema = new mongoose.Schema({
       message: 'Cannot have duplicate course enrollments'
     }
   },
+  coins: {
+    type: Number,
+    default: 0,
+    min: [0, 'Coins cannot be negative'],
+    get: v => Math.round(v),
+    set: v => Math.round(v)
+  },
   profile: {
     avatar: {
       type: String,

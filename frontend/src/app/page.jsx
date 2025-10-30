@@ -207,7 +207,19 @@ export default function Home() {
   const persistCartItems = useCallback((items) => {
     if (typeof window === "undefined" || !Array.isArray(items)) return;
     try {
-      localStorage.setItem("cartItems", JSON.stringify(items));
+      localStorage.setItem(
+        "cartItems",
+        JSON.stringify(
+          items.map((item) => ({
+            ...item,
+            type: item.type || (item.product || item.productId ? "product" : "course"),
+            productId:
+              item.productId || item.product || item.product?._id || item.product?.id || undefined,
+            courseId:
+              item.courseId || item.course || item.course?._id || item.course?.id || undefined
+          }))
+        )
+      );
       window.dispatchEvent(new Event("cartUpdated"));
     } catch (error) {
       console.error("Failed to persist cart items", error);
@@ -220,16 +232,20 @@ export default function Home() {
       return;
     }
 
-    const courseId = product?._id || product?.id;
-    if (!courseId) {
+    const productId = product?._id || product?.id;
+    if (!productId) {
       toast.error("Unable to add this item to the cart");
       return;
     }
 
+    const normalizedPrice =
+      typeof product.price === "number" ? product.price : Number(product.price) || 0;
+
     const payload = {
-      courseId,
-      title: product.title || "Untitled Course",
-      price: typeof product.price === "number" ? product.price : Number(product.price) || 0,
+      productId,
+      type: "product",
+      title: product.title || product.name || "Untitled Product",
+      price: normalizedPrice,
       quantity: 1
     };
 
@@ -241,12 +257,27 @@ export default function Home() {
         persistCartItems(serverItems);
       } else {
         const existingCart = JSON.parse(localStorage.getItem("cartItems") || "[]");
-        const existingIndex = existingCart.findIndex((item) => (item._id || item.id || item.courseId) === courseId);
+        const existingIndex = existingCart.findIndex((item) => {
+          const id = item.productId || item.product?._id || item.product?.id || item._id || item.id;
+          return id === productId;
+        });
 
         if (existingIndex > -1) {
-          existingCart[existingIndex].quantity = (existingCart[existingIndex].quantity || 1) + 1;
+          const existing = existingCart[existingIndex];
+          existingCart[existingIndex] = {
+            ...existing,
+            quantity: (existing.quantity || 1) + 1,
+            type: "product",
+            productId
+          };
         } else {
-          existingCart.push({ ...product, quantity: 1 });
+          existingCart.push({
+            ...product,
+            quantity: 1,
+            type: "product",
+            productId,
+            price: normalizedPrice
+          });
         }
 
         persistCartItems(existingCart);
