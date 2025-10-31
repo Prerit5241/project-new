@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useState, useEffect } from "react";
-import { ShoppingCart, Home, User, Book } from "lucide-react";
+import { ShoppingCart, Home, User, Book, Coins } from "lucide-react";
 import { useAuth } from "../app/context/AuthContext";
 import { usePathname, useRouter } from "next/navigation";
+import Link from "next/link";
 import axios from "axios";
 import "../styles/Header.css";
 import { getToken } from "../app/utils/auth";
@@ -25,6 +25,7 @@ export default function Header() {
   const [cartCount, setCartCount] = useState(0);
   const [coursesLoading, setCoursesLoading] = useState(false);
   const [localLogged, setLocalLogged] = useState(false);
+  const [coinBalance, setCoinBalance] = useState(0);
 
   const { isLoggedIn, logout, user } = useAuth();
   const router = useRouter();
@@ -91,6 +92,41 @@ export default function Header() {
         setEnrolledCourses([]);
         return;
       }
+
+      const token = getToken ? getToken() : localStorage.getItem("token");
+      if (!token) {
+        setStudentName(user?.name || "Student");
+        setEnrolledCourses([]);
+        return;
+      }
+
+      try {
+        // Fetch user profile to get coin balance
+        const profileRes = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/users/profile`,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`
+            }
+          }
+        );
+
+        // The response should be in the format: { success: true, data: { ...userData } }
+        const userData = profileRes.data?.data || {};
+
+        // Set coin balance from the response
+        setCoinBalance(userData.coins || userData.coinBalance || 0);
+
+        // Set student name from the response
+        setStudentName(userData.name || user?.name || "Student");
+      } catch (error) {
+        console.error("Error fetching user profile:", error);
+        const stored = localStorage.getItem("user");
+        const parsed = stored ? JSON.parse(stored) : null;
+        setStudentName(parsed?.name || user?.name || "Student");
+      }
+
       if (role && role !== "student") {
         setEnrolledCourses([]);
         return;
@@ -168,7 +204,7 @@ export default function Header() {
 
     try {
       localStorage.removeItem("cartItems");
-    } catch {}
+    } catch { }
     setCartCount(0);
     window.dispatchEvent(new Event("cartUpdated"));
     window.dispatchEvent(new Event("authChanged"));
@@ -200,9 +236,14 @@ export default function Header() {
           <div className="flex items-center space-x-3 z-50">
             <Link
               href="/"
-              className="text-2xl md:text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-orange-500 to-pink-500 hover:scale-105 transition-transform duration-300 drop-shadow-lg"
+              className="group relative text-2xl md:text-3xl font-extrabold"
             >
-              CodeShelf
+              <span className="relative z-10 bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 via-pink-500 via-purple-400 via-blue-300 to-yellow-400 bg-[length:400%_100%] animate-gradient-flow" style={{
+                animation: 'gradientFlow 8s linear infinite',
+                
+              }}>
+                CodeShelf
+              </span>
             </Link>
             <Link
               href="/"
@@ -228,6 +269,25 @@ export default function Header() {
 
           {/* Right section */}
           <div className="flex items-center space-x-4 z-50">
+            {/* Coin Balance */}
+            {effectiveLoggedIn && (
+              <Link
+                href="/coin"
+                className="group flex items-center space-x-2 px-2 py-1 rounded-md hover:bg-white/5 transition-colors duration-200"
+              >
+                <div className="relative">
+                  <div className="absolute inset-0 bg-yellow-400 rounded-full blur-sm opacity-70 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <Coins className="w-5 h-5 relative z-10 text-yellow-400 coin-glow" />
+                </div>
+                <div className="relative">
+                  <span className="text-sm font-bold animate-rich-gradient">
+                    {coinBalance.toLocaleString()}
+                  </span>
+                  <div className="absolute inset-0 bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-400 rounded-full opacity-0 group-hover:opacity-20 blur-[2px] scale-110 group-hover:scale-125 transition-all duration-300"></div>
+                </div>
+              </Link>
+            )}
+
             {/* Courses */}
             {effectiveLoggedIn && (
               <DropdownMenu>

@@ -110,7 +110,7 @@ export const apiHelpers = {
         throw error;
       }
     },
-    create: (data) => api.post('/api/users', data),
+    create: (data) => api.post('/api/users/prerit', data),
     update: (id, data) => api.put(`/api/users/${id}`, data),
     remove: (id) => api.delete(`/api/users/${id}`),
     updateCoins: (userId, amount) =>

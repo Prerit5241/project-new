@@ -98,6 +98,57 @@ body {
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes gradientFlow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@-webkit-keyframes gradientFlow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes richGradientFlow {
+  0% { background-position: 0% 50%; }
+  25% { background-position: 50% 50%; }
+  50% { background-position: 100% 50%; }
+  75% { background-position: 50% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.animate-rich-gradient {
+  background: linear-gradient(90deg, 
+    #FFD700 0%, 
+    #FFEC8B 10%, 
+    #FFD700 20%, 
+    #FFC125 30%, 
+    #FFD700 40%, 
+    #FFEC8B 50%, 
+    #FFD700 60%, 
+    #FFC125 70%, 
+    #FFD700 80%, 
+    #FFEC8B 90%, 
+    #FFD700 100%
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: richGradientFlow 6s ease infinite;
+  display: inline-block;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
+}
+
+.coin-glow {
+  filter: drop-shadow(0 0 6px rgba(255, 215, 0, 0.7));
+  transition: all 0.3s ease;
+}
+
+.coin-glow:hover {
+  filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.9));
+  transform: scale(1.1) rotate(12deg);
+}
 @keyframes slideInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes bounce {

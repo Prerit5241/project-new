@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { getToken } from "@/utils/auth";
 import { apiHelpers } from "@/lib/api";
 import { formatDistanceToNow, parseISO } from "date-fns";
+import { CoursesAPI, ProductsAPI } from "@/utils/api";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -18,6 +19,10 @@ export default function AdminPage() {
   const [allSignupUsers, setAllSignupUsers] = useState([]);
   const [showAllUsers, setShowAllUsers] = useState(false);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const [totalCoins, setTotalCoins] = useState(0);
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [totalCourses, setTotalCourses] = useState(0);
+  const [totalProducts, setTotalProducts] = useState(0);
 
   const [adminName, setAdminName] = useState("Admin");
 
@@ -89,6 +94,61 @@ export default function AdminPage() {
 
   useEffect(() => {
     loadActivities();
+    
+    // Fetch total coins from the transactions
+    const fetchTotalCoins = async () => {
+      try {
+        const response = await apiHelpers.activities.getRecent({ 
+          type: 'coin_update',
+          limit: 1000 // Get enough records to calculate total
+        });
+        const transactions = response?.data?.data || response?.data || [];
+        const total = transactions.reduce((sum, tx) => {
+          const amount = parseFloat(tx.details?.newValue) || 0;
+          return sum + amount;
+        }, 0);
+        setTotalCoins(Math.round(total));
+      } catch (error) {
+        console.error('Error fetching total coins:', error);
+      }
+    };
+
+    // Fetch total number of students
+    const fetchTotalStudents = async () => {
+      try {
+        const users = await apiHelpers.users.list();
+        const students = users.filter(user => user.role === 'student');
+        setTotalStudents(students.length);
+      } catch (error) {
+        console.error('Error fetching total students:', error);
+      }
+    };
+    
+    // Fetch total number of courses
+    const fetchTotalCourses = async () => {
+      try {
+        const response = await CoursesAPI.list();
+        setTotalCourses(response?.data?.length || 0);
+      } catch (error) {
+        console.error('Error fetching total courses:', error);
+      }
+    };
+    
+    // Fetch total number of products
+    const fetchTotalProducts = async () => {
+      try {
+        const response = await ProductsAPI.list({ page: 1, limit: 1000 }); // Fetch all products
+        const products = response?.data || [];
+        setTotalProducts(products.length);
+      } catch (error) {
+        console.error('Error fetching total products:', error);
+      }
+    };
+    
+    fetchTotalCoins();
+    fetchTotalStudents();
+    fetchTotalCourses();
+    fetchTotalProducts();
   }, [loadActivities]);
 
   const formattedActivities = useMemo(() => {
@@ -332,34 +392,30 @@ export default function AdminPage() {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <StatsCard 
-          title="Total Revenue" 
-          value={`₹${stats.totalRevenue.toLocaleString()}`}
-          growth={stats.monthlyGrowth.revenue}
-          icon="💰"
-          bgColor="from-emerald-50 to-green-50"
-          iconColor="from-emerald-500 to-green-600"
+          title="Total Coins in System" 
+          value={totalCoins.toLocaleString()}
+          icon="🪙"
+          bgColor="from-amber-50 to-yellow-50"
+          iconColor="from-amber-500 to-yellow-600"
         />
         <StatsCard 
-          title="Total Orders" 
-          value={stats.totalOrders.toLocaleString()}
-          growth={stats.monthlyGrowth.orders}
-          icon="📦"
+          title="Total Students" 
+          value={totalStudents.toLocaleString()}
+          icon="👨‍🎓"
           bgColor="from-blue-50 to-cyan-50"
           iconColor="from-blue-500 to-cyan-600"
         />
         <StatsCard 
-          title="Students" 
-          value={stats.totalStudents.toLocaleString()}
-          growth={stats.monthlyGrowth.students}
-          icon="👨‍🎓"
+          title="Total Courses" 
+          value={totalCourses.toLocaleString()}
+          icon="📚"
           bgColor="from-purple-50 to-indigo-50"
           iconColor="from-purple-500 to-indigo-600"
         />
         <StatsCard 
-          title="Courses" 
-          value={stats.totalCourses}
-          growth={stats.monthlyGrowth.courses}
-          icon="🎓"
+          title="Total Products" 
+          value={totalProducts.toLocaleString()}
+          icon="🛍️"
           bgColor="from-orange-50 to-red-50"
           iconColor="from-orange-500 to-red-600"
         />
@@ -369,22 +425,33 @@ export default function AdminPage() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         {/* Coin Transaction History */}
         <div className="xl:col-span-2">
-          <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 hover:shadow-2xl transition-all duration-300">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-800 mb-1">Coin Transactions</h2>
-                <p className="text-gray-600">Recent coin credit/debit history</p>
+          <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 hover:shadow-2xl transition-all duration-300 flex flex-col" style={{ height: '600px' }}>
+            <div className="flex-shrink-0">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-800 mb-1">Coin Transactions</h2>
+                  <p className="text-gray-600">Recent coin credit/debit history</p>
+                </div>
+                <div className="flex space-x-3">
+                  <button 
+                    onClick={loadActivities}
+                    className="bg-gradient-to-r from-orange-500 to-blue-500 text-white px-6 py-3 rounded-xl font-semibold hover:from-orange-600 hover:to-blue-600 transition-all duration-300 shadow-lg hover:scale-105"
+                    disabled={activitiesLoading}
+                  >
+                    {activitiesLoading ? 'Refreshing...' : 'Refresh'}
+                  </button>
+                  <button 
+                    onClick={() => router.push('/admin/coins')}
+                    className="bg-white border-2 border-blue-500 text-blue-600 hover:bg-blue-50 px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg hover:scale-105"
+                  >
+                    View All
+                  </button>
+                </div>
               </div>
-              <button 
-                onClick={loadActivities}
-                className="bg-gradient-to-r from-orange-500 to-blue-500 text-white px-6 py-3 rounded-xl font-semibold hover:from-orange-600 hover:to-blue-600 transition-all duration-300 shadow-lg hover:scale-105"
-                disabled={activitiesLoading}
-              >
-                {activitiesLoading ? 'Refreshing...' : 'Refresh'}
-              </button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <div className="flex-1 overflow-hidden">
+              <div className="h-full overflow-y-auto">
+                <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-200">
                     <th className="text-left py-4 px-4 font-semibold text-gray-700">User</th>
@@ -399,7 +466,6 @@ export default function AdminPage() {
                 <tbody>
                   {formattedActivities
                     .filter(activity => activity.type === 'coin_update')
-                    .slice(0, 5)
                     .map((activity) => {
                       const details = activity.details || {};
                       const amount = parseInt(details.amount) || 0;
@@ -453,8 +519,9 @@ export default function AdminPage() {
                       </td>
                     </tr>
                   )}
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -650,24 +717,13 @@ export default function AdminPage() {
 /* ────────────────────────────────────────────────────────── */
 /*  Component: Stats Card                                     */
 /* ────────────────────────────────────────────────────────── */
-function StatsCard({ title, value, growth, icon, bgColor, iconColor }) {
-  const isPositive = growth > 0;
+function StatsCard({ title, value, icon, bgColor, iconColor }) {
   return (
     <div className={`relative overflow-hidden bg-gradient-to-br ${bgColor} rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border border-white/50 hover:scale-105`}>
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <p className="text-gray-600 text-sm font-semibold mb-1">{title}</p>
-          <p className="text-3xl font-bold text-gray-800 mb-2">{value}</p>
-          <div className="flex items-center gap-2">
-            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-bold ${
-              isPositive 
-                ? 'bg-green-100 text-green-700' 
-                : 'bg-red-100 text-red-700'
-            }`}>
-              {isPositive ? '📈' : '📉'} {Math.abs(growth)}%
-            </span>
-            <span className="text-xs text-gray-500">vs last month</span>
-          </div>
+          <p className="text-3xl font-bold text-gray-800">{value}</p>
         </div>
         <div className={`w-16 h-16 bg-gradient-to-br ${iconColor} rounded-2xl flex items-center justify-center text-2xl shadow-lg hover:scale-110 transition-transform duration-300`}>
           {icon}
