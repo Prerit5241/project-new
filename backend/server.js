@@ -72,10 +72,15 @@ app.use((err, req, res, next) => {
   next();
 });
 
-// ✅ Request logging middleware
+// Request logging middleware - only log in development or for non-API routes in production
 app.use((req, res, next) => {
-  const timestamp = new Date().toISOString();
-  console.log(`📡 ${timestamp} - ${req.method} ${req.path} - IP: ${req.ip || req.connection.remoteAddress}`);
+  const isApiRoute = req.path.startsWith('/api/');
+  
+  if (process.env.NODE_ENV !== 'production' || !isApiRoute) {
+    const timestamp = new Date().toISOString();
+    console.log(`📡 ${timestamp} - ${req.method} ${req.path} - IP: ${req.ip || req.connection.remoteAddress}`);
+  }
+  
   next();
 });
 

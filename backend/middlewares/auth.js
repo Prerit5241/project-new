@@ -21,10 +21,22 @@ module.exports = function(req, res, next) {
       name: decoded.name
     };
     
-    console.log('✅ JWT decoded user:', req.user);
+    // Only log in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('✅ JWT decoded user:', { 
+        userId: req.user.userId,
+        role: req.user.role,
+        name: req.user.name 
+      });
+    }
     next();
   } catch (err) {
-    console.error('❌ JWT verification failed:', err);
+    // Only log full error in development
+    if (process.env.NODE_ENV === 'development') {
+      console.error('❌ JWT verification failed:', err.message);
+    } else {
+      console.error('❌ JWT verification failed');
+    }
     return res.status(401).json({ success: false, msg: "Token invalid" });
   }
 };

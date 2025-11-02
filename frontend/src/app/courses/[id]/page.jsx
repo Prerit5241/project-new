@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { apiHelpers } from "@/lib/api";
 import { useAuth } from "@/app/context/AuthContext";
 import { ShoppingCart, CheckCircle, Clock, Award, Users, Star, Play, BookOpen, ArrowLeft, X, CreditCard, Coins } from "lucide-react";
+import axios from "axios";
 import { toast } from "react-toastify";
 
 // Animation keyframes for modal
@@ -65,7 +66,7 @@ const formatPrice = (value) => {
 export default function CourseDetailsPage() {
   const { id } = useParams();
   const router = useRouter();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, updateUser } = useAuth();
   
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -85,6 +86,9 @@ export default function CourseDetailsPage() {
       console.error("Failed to persist cart items", error);
     }
   };
+
+  // Use the centralized user data fetching from AuthContext
+  // No need for local user data fetching here
 
   useEffect(() => {
     const fetchCourse = async () => {
@@ -512,6 +516,23 @@ export default function CourseDetailsPage() {
                         <h2 className="mt-3 text-4xl font-bold text-gray-900 dark:text-white">
                           {formatPrice(price)}
                         </h2>
+                        <div className="mt-2 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                          <Coins className="h-4 w-4 text-amber-500" />
+                          <span>or {Math.round(price * 0.8)} coins</span>
+                        </div>
+                        {isAuthenticated && (
+                          <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+                            <div className="flex items-center gap-2 text-sm whitespace-nowrap">
+                              <Coins className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                              <span className="font-medium text-gray-700 dark:text-amber-100">Your Coins: <span className="font-bold text-amber-600 dark:text-amber-300">{(user?.coins || 0).toLocaleString()}</span></span>
+                              {(user?.coins || 0) < Math.round(price * 0.8) && (
+                                <Link href="/student/coin" className="ml-2 text-xs text-blue-600 hover:underline dark:text-blue-400 whitespace-nowrap">
+                                  Get More
+                                </Link>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase text-orange-600 dark:bg-orange-500/10 dark:text-orange-300">
                         Limited seats
@@ -816,54 +837,54 @@ export default function CourseDetailsPage() {
                   {/* Credit Points Payment Option */}
                   <label 
                     className={`relative block p-5 border-2 rounded-2xl cursor-pointer transition-all duration-300 group ${
-                      selectedPaymentMethod === 'credits' 
+                      selectedPaymentMethod === 'coins' 
                         ? 'border-amber-500 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 shadow-lg shadow-amber-100 dark:shadow-none' 
                         : 'border-gray-200 dark:border-gray-700 hover:border-amber-300 dark:hover:border-amber-600 hover:shadow-md'
-                    } ${(user?.credits || 0) < (course.price * 10) ? 'opacity-60' : ''}`}
+                    } ${(user?.coins || 0) < Math.round(course.price * 0.8) ? 'opacity-60' : ''}`}
                   >
                     <input
                       type="radio"
                       name="paymentMethod"
-                      value="credits"
-                      checked={selectedPaymentMethod === 'credits'}
+                      value="coins"
+                      checked={selectedPaymentMethod === 'coins'}
                       onChange={(e) => setSelectedPaymentMethod(e.target.value)}
-                      disabled={(user?.credits || 0) < (course.price * 10)}
+                      disabled={(user?.coins || 0) < Math.round(course.price * 0.8)}
                       className="sr-only"
                     />
                     <div className="flex items-start gap-4">
                       <div className={`flex-shrink-0 p-3 rounded-xl transition-all duration-300 ${
-                        selectedPaymentMethod === 'credits' 
+                        selectedPaymentMethod === 'coins' 
                           ? 'bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-200 dark:shadow-none' 
                           : 'bg-gray-100 dark:bg-gray-700 group-hover:bg-amber-50 dark:group-hover:bg-amber-900/20'
                       }`}>
                         <Coins className={`h-6 w-6 transition-colors ${
-                          selectedPaymentMethod === 'credits' ? 'text-white' : 'text-gray-600 dark:text-gray-400'
+                          selectedPaymentMethod === 'coins' ? 'text-white' : 'text-gray-600 dark:text-gray-400'
                         }`} />
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <h5 className="font-semibold text-gray-900 dark:text-white">Use Credit Points</h5>
-                          {selectedPaymentMethod === 'credits' && (
+                          <h5 className="font-semibold text-gray-900 dark:text-white">Use Coins</h5>
+                          {selectedPaymentMethod === 'coins' && (
                             <CheckCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                           )}
                         </div>
                         <div className="flex items-center gap-2 mb-2">
                           <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm">
                             <Coins className="h-3.5 w-3.5 mr-1" />
-                            {user?.credits || 0} points available
+                            {(user?.coins || 0).toLocaleString()} coins available
                           </span>
                           <span className="text-xs text-gray-500 dark:text-gray-400">
-                            Required: {course.price * 10}
+                            Required: {Math.round(course.price * 0.8)} coins
                           </span>
                         </div>
-                        {(user?.credits || 0) >= (course.price * 10) ? (
+                        {(user?.coins || 0) >= Math.round(course.price * 0.8) ? (
                           <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1">
                             <CheckCircle className="h-4 w-4" />
-                            You have enough points to enroll!
+                            You have enough coins to enroll!
                           </p>
                         ) : (
                           <p className="text-sm text-orange-600 dark:text-orange-400">
-                            You need {(course.price * 10) - (user?.credits || 0)} more points
+                            You need {Math.round(course.price * 0.8) - (user?.coins || 0)} more coins
                           </p>
                         )}
                       </div>
@@ -898,7 +919,7 @@ export default function CourseDetailsPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={isEnrolling || (selectedPaymentMethod === 'credits' && (user?.credits || 0) < (course.price * 10))}
+                    disabled={isEnrolling || (selectedPaymentMethod === 'coins' && (user?.coins || 0) < Math.round(course.price * 0.8))}
                     className="flex-1 px-6 py-3 text-sm font-bold text-white bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 rounded-xl hover:shadow-lg hover:shadow-indigo-200 dark:hover:shadow-none hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                   >
                     {isEnrolling ? (

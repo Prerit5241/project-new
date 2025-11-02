@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import Loading3D from "../../components/Loading3D";
@@ -16,18 +16,71 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
   const router = useRouter();
+  
+  // Keep track of the last fetch time to prevent too frequent updates
+  const lastFetchTime = useRef(0);
+  const FETCH_COOLDOWN = 30000; // 30 seconds
 
+  // Centralized function to fetch user data
+  const fetchUserData = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastFetchTime.current < 10000) { // 10 second cooldown
+      return;
+    }
+    
+    const token = localStorage.getItem("token");
+    if (!token || isFetching) return;
+    
+    setIsFetching(true);
+    lastFetchTime.current = now;
+    
+    try {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/users/profile`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+      
+      const userData = response.data?.data || {};
+      if (Object.keys(userData).length > 0) {
+        setUser(userData);
+        localStorage.setItem("user", JSON.stringify(userData));
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    } finally {
+      setIsFetching(false);
+    }
+  }, [isFetching]);
+  
+  // Initial load
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
 
     if (storedToken && storedUser) {
-      setUser(JSON.parse(storedUser));
+      const parsedUser = JSON.parse(storedUser);
+      setUser(parsedUser);
       axios.defaults.headers.common["Authorization"] = `Bearer ${storedToken}`;
+      
+      // Fetch fresh data if it's been more than 5 minutes
+      const lastUpdated = localStorage.getItem('userLastUpdated');
+      if (!lastUpdated || (Date.now() - parseInt(lastUpdated, 10)) > 5 * 60 * 1000) {
+        fetchUserData();
+      }
     }
     setLoading(false);
-  }, []);
+    
+    // Set up interval to refresh user data every 5 minutes
+    const interval = setInterval(fetchUserData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [fetchUserData]);
 
   const login = async (email, password) => {
     try {
@@ -118,13 +171,46 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const isAuthenticated = () => !!user;
-  const isLoggedIn = !!user;
+  // Function to update user data
+  const updateUser = (updates) => {
+    setUser(prevUser => {
+      if (!prevUser) return prevUser;
+      const updatedUser = { ...prevUser, ...updates };
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      return updatedUser;
+    });
+  };
 
-  const value = { user, loading, login, register, logout, isAuthenticated, isLoggedIn };
+  const isAuthenticated = useCallback(() => !!user, [user]);
+  const isLoggedIn = !!user;
+  
+  const value = { 
+    user, 
+    loading, 
+    login, 
+    register, 
+    logout, 
+    isAuthenticated, 
+    isLoggedIn, 
+    updateUser,
+    refreshUser: fetchUserData // Expose refresh function
+  };
+  
+  // Memoize the context value to prevent unnecessary re-renders
+  const memoizedValue = useMemo(() => value, [
+    user, 
+    loading, 
+    login, 
+    register, 
+    logout, 
+    isAuthenticated, 
+    isLoggedIn, 
+    updateUser,
+    fetchUserData
+  ]);
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={memoizedValue}>
       {loading ? <Loading3D /> : children}
     </AuthContext.Provider>
   );

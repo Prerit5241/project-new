@@ -9,7 +9,7 @@ const navigationItems = [
   { href: "/", label: "Home", icon: "🏠" },
   { href: "/student/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/student/my-courses", label: "My Courses", icon: "📚" },
-  { href: "/student/courses", label: "Browse", icon: "🔍" },
+  { href: "/student/coin", label: "My Coins", icon: "🪙" },
   { href: "/student/certificates", label: "Certificates", icon: "🎓" },
   { href: "/student/profile", label: "Profile", icon: "👤" },
 ];

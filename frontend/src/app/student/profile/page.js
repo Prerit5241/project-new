@@ -10,6 +10,10 @@ function formatDate(date) {
   if (!date) return "—";
   try {
     const dateObj = new Date(date);
+    // Check if the date is valid
+    if (isNaN(dateObj.getTime())) {
+      return "—";
+    }
     const datePart = dateObj.toLocaleDateString("en-US", {
       weekday: "long",
       month: "long",
@@ -23,12 +27,12 @@ function formatDate(date) {
     });
     return `${datePart} at ${timePart}`;
   } catch {
-    return date;
+    return "—";
   }
 }
 
 export default function StudentProfilePage() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const [studentInfo, setStudentInfo] = useState({
     name: "",
     email: "",
@@ -43,43 +47,88 @@ export default function StudentProfilePage() {
 
   useEffect(() => {
     const hydrateProfile = async () => {
+      if (!user) {
+        // If no user is logged in, redirect to login
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login';
+        }
+        return;
+      }
+
       try {
         setLoadingProfile(true);
-        const response = await apiHelpers.users.getProfile();
-        const payload = response?.data?.data || response?.data || {};
-        if (payload) {
+        
+        // First try to get profile from the API
+        try {
+          const response = await apiHelpers.users.getProfile();
+          const payload = response?.data?.data || response?.data || {};
+          
+          if (payload && (payload.id || payload._id)) {
+            const normalized = {
+              name: payload.name || user?.name || "Student",
+              email: payload.email || user?.email || "Not provided",
+              id: payload.id || payload._id || user?.id || user?._id || "Unknown",
+              // Only use existing timestamps, don't create new ones
+              createdAt: payload.createdAt || user?.createdAt || null,
+              updatedAt: payload.updatedAt || user?.updatedAt || null,
+            };
+            setStudentInfo(normalized);
+            setFormData({ name: normalized.name, email: normalized.email });
+            return;
+          }
+        } catch (apiError) {
+          console.warn('Failed to fetch profile from API, falling back to auth context:', apiError);
+          // Continue to fallback to auth context user data
+        }
+
+        // Fallback to user data from auth context
+        if (user) {
           const normalized = {
-            name: payload.name || user?.name || "Student",
-            email: payload.email || user?.email || "Not provided",
-            id: payload.id || payload._id || user?.id || user?._id || "Unknown",
-            createdAt: payload.createdAt || user?.createdAt || null,
-            updatedAt: payload.updatedAt || user?.updatedAt || null,
+            name: user.name || "Student",
+            email: user.email || "Not provided",
+            id: user.id || user._id || "Unknown",
+            // Only use existing timestamps, don't create new ones
+            createdAt: user.createdAt || user.dateJoined || null,
+            updatedAt: user.updatedAt || null,
           };
           setStudentInfo(normalized);
           setFormData({ name: normalized.name, email: normalized.email });
         }
       } catch (error) {
-        // fallback to auth/local storage data
-        const storedUser = typeof window !== "undefined" ? localStorage.getItem("user") : null;
-        if (storedUser) {
-          try {
-            const parsed = JSON.parse(storedUser);
-            setStudentInfo({
-              name: parsed?.name || "Student",
-              email: parsed?.email || "Not provided",
-              id: parsed?.id || parsed?._id || "Unknown",
-              createdAt: parsed?.createdAt || null,
-              updatedAt: parsed?.updatedAt || null,
-            });
-            setFormData({
-              name: parsed?.name || "Student",
-              email: parsed?.email || "Not provided",
-            });
-          } catch {
-            setStudentInfo({ name: "Student", email: "Not provided", id: "Unknown", createdAt: null, updatedAt: null });
+        console.error('Error loading profile:', error);
+        
+        // Show specific error message based on error status
+        if (error.response) {
+          if (error.response.status === 403) {
+            toast.error('You do not have permission to view this profile');
+          } else if (error.response.status === 401) {
+            toast.error('Please log in to view your profile');
+            if (typeof window !== 'undefined') {
+              window.location.href = '/login';
+            }
+          } else {
+            toast.error('Failed to load profile data');
           }
+        } else {
+          // Fallback to auth/local storage data if API fails
+          const storedUser = typeof window !== "undefined" ? localStorage.getItem("user") : null;
+          if (storedUser) {
+            try {
+              const parsed = JSON.parse(storedUser);
+              setStudentInfo({
+                name: parsed?.name || "Student",
+                email: parsed?.email || "Not provided",
+                id: parsed?.id || parsed?._id || "Unknown",
+                createdAt: parsed?.createdAt || null,
+                updatedAt: parsed?.updatedAt || null,
+              });
+              return;
+            } catch (e) {
+              console.error('Error parsing stored user data:', e);
+            }
+          }
+          toast.error('Failed to load profile data. Please try again.');
         }
-        console.error("Failed to load profile", error);
       } finally {
         setLoadingProfile(false);
       }
@@ -105,24 +154,47 @@ export default function StudentProfilePage() {
       return;
     }
 
+    const payload = { 
+      name: formData.name.trim(), 
+      email: formData.email.trim() 
+    };
+
     try {
       setSaving(true);
-      const payload = { name: formData.name.trim(), email: formData.email.trim() };
-      const response = await apiHelpers.users.updateProfile(payload);
-      const updated = response?.data?.data || response?.data || payload;
+      
+      // Try to update via API first
+      let updated = { ...payload };
+      try {
+        const response = await apiHelpers.users.updateProfile(payload);
+        updated = response?.data?.data || response?.data || payload;
+      } catch (apiError) {
+        console.warn('Failed to update profile via API, updating locally:', apiError);
+        // Continue with local update
+      }
 
       const normalized = {
+        ...studentInfo,
         name: updated.name || payload.name,
         email: updated.email || payload.email,
-        id: updated.id || updated._id || studentInfo.id,
-        createdAt: updated.createdAt || studentInfo.createdAt,
-        updatedAt: updated.updatedAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
+      // Update local state
       setStudentInfo(normalized);
       setFormData({ name: normalized.name, email: normalized.email });
       setIsEditing(false);
 
+      // Update auth context
+      if (setUser && typeof setUser === 'function') {
+        setUser(prevUser => ({
+          ...prevUser,
+          name: normalized.name,
+          email: normalized.email,
+          updatedAt: normalized.updatedAt,
+        }));
+      }
+
+      // Update localStorage
       if (typeof window !== "undefined") {
         const storedUser = localStorage.getItem("user");
         if (storedUser) {
@@ -137,17 +209,31 @@ export default function StudentProfilePage() {
                 updatedAt: normalized.updatedAt,
               })
             );
-          } catch {
-            // ignore local storage update errors
+          } catch (e) {
+            console.error('Error updating local storage:', e);
           }
         }
       }
 
       toast.success("Profile updated successfully");
     } catch (error) {
-      console.error("Failed to update profile", error);
-      const message = error?.response?.data?.message || "Failed to update profile";
-      toast.error(message);
+      console.error("Error updating profile:", error);
+      
+      // More specific error messages
+      if (error.response) {
+        if (error.response.status === 403) {
+          toast.error("You don't have permission to update this profile");
+        } else if (error.response.status === 401) {
+          toast.error("Please log in to update your profile");
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login';
+          }
+        } else {
+          toast.error(error.response.data?.message || "Failed to update profile");
+        }
+      } else {
+        toast.error("Network error. Changes saved locally but may not be synced with the server.");
+      }
     } finally {
       setSaving(false);
     }
