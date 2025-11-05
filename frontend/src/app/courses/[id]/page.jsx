@@ -7,7 +7,8 @@ import { apiHelpers } from "@/lib/api";
 import { useAuth } from "@/app/context/AuthContext";
 import { ShoppingCart, CheckCircle, Clock, Award, Users, Star, Play, BookOpen, ArrowLeft, X, CreditCard, Coins } from "lucide-react";
 import axios from "axios";
-import { toast } from "react-toastify";
+import { toast, ToastContainer } from "react-toastify";
+import 'react-toastify/dist/ReactToastify.css';
 
 // Animation keyframes for modal
 const styles = `
@@ -76,6 +77,7 @@ export default function CourseDetailsPage() {
   const [showCourseDetailsCard, setShowCourseDetailsCard] = useState(true);
   const [showEnrollmentModal, setShowEnrollmentModal] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('online'); // 'online' or 'credits'
+  const [isEnrolled, setIsEnrolled] = useState(false);
 
   const persistCartItems = (items) => {
     if (typeof window === "undefined") return;
@@ -86,6 +88,16 @@ export default function CourseDetailsPage() {
       console.error("Failed to persist cart items", error);
     }
   };
+
+  // Check if user is enrolled in this course
+  useEffect(() => {
+    if (user && course) {
+      const enrolled = user.enrolledCourses?.some(
+        ec => ec.courseId === (course._id || course.id || id)
+      );
+      setIsEnrolled(enrolled);
+    }
+  }, [user, course, id]);
 
   // Use the centralized user data fetching from AuthContext
   // No need for local user data fetching here
@@ -159,6 +171,71 @@ export default function CourseDetailsPage() {
       document.body.style.overflow = 'unset';
     };
   }, [showEnrollmentModal]);
+
+  const handleEnrollNow = async () => {
+    if (!isAuthenticated) {
+      router.push('/login?redirect=' + encodeURIComponent(`/courses/${id}`));
+      return;
+    }
+
+    // Check if already enrolled
+    if (user?.enrolledCourses?.some(ec => ec.courseId === (course?._id || course?.id || id))) {
+      router.push(`/learning/${id}`);
+      return;
+    }
+
+    setShowEnrollmentModal(true);
+  };
+
+  const handleConfirmEnrollment = async () => {
+    if (!isAuthenticated) {
+      router.push('/login?redirect=' + encodeURIComponent(`/courses/${id}`));
+      return;
+    }
+
+    try {
+      setIsEnrolling(true);
+      
+      // Call the enrollment API
+      const response = await fetch(`/api/courses/${id}/enroll`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to enroll in course');
+      }
+
+      // Update user data with new coins and enrollment
+      if (user) {
+        const updatedUser = { ...user };
+        updatedUser.coins = data.coins;
+        updatedUser.enrolledCourses = [
+          ...(updatedUser.enrolledCourses || []),
+          { courseId: id, enrolledAt: new Date().toISOString() }
+        ];
+        updateUser(updatedUser);
+      }
+
+      toast.success('Successfully enrolled in the course!');
+      setShowEnrollmentModal(false);
+      
+      // Redirect to learning page after a short delay
+      setTimeout(() => {
+        router.push(`/learning/${id}`);
+      }, 1500);
+
+    } catch (error) {
+      console.error('Enrollment error:', error);
+      toast.error(error.message || 'Failed to enroll in course');
+    } finally {
+      setIsEnrolling(false);
+    }
+  };
 
   const handleAddToCart = async () => {
     if (!isAuthenticated) {
@@ -241,28 +318,79 @@ export default function CourseDetailsPage() {
       setIsEnrolling(true);
       
       if (selectedPaymentMethod === 'online') {
-        // Handle online payment integration
-        // This is where you would integrate with Razorpay/Stripe
-        // For now, we'll proceed with direct enrollment
-        await apiHelpers.enrollments.create({ 
-          courseId: id,
-          paymentMethod: 'online',
-          amount: course.price
+        // Show message that online payment is temporarily unavailable
+        toast.warning("Online Payment is temporarily unavailable. Please use coins to enroll.", {
+          position: "top-center",
+          autoClose: 5000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+          progress: undefined,
         });
-      } else if (selectedPaymentMethod === 'credits') {
-        // Handle credit points payment
-        await apiHelpers.enrollments.create({ 
-          courseId: id,
-          paymentMethod: 'credits',
-          amount: course.price
-        });
+        setIsEnrolling(false);
+        return;
+      } else if (selectedPaymentMethod === 'coins') {
+        try {
+          // Handle coin payment
+          const response = await apiHelpers.courses.enroll(id);
+          
+          if (response.data && response.data.success) {
+            // Update user's coin balance in the UI using the actual updated balance from the server
+            if (updateUser) {
+              updateUser({
+                ...user,
+                coins: response.data.coins,
+                enrolledCourses: [
+                  ...(user?.enrolledCourses || []),
+                  {
+                    courseId: id,
+                    enrolledAt: new Date().toISOString(),
+                    progress: 0,
+                    completedLessons: []
+                  }
+                ]
+              });
+            }
+            
+            // Update local storage
+            const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+            if (currentUser) {
+              currentUser.coins = response.data.coins;
+              currentUser.enrolledCourses = [
+                ...(currentUser.enrolledCourses || []),
+                {
+                  courseId: id,
+                  enrolledAt: new Date().toISOString(),
+                  progress: 0,
+                  completedLessons: []
+                }
+              ];
+              localStorage.setItem('user', JSON.stringify(currentUser));
+            }
+          
+            // Show success message
+            toast.success("Enrollment successful! Redirecting to course...");
+            
+            // Close modal and redirect to learning page
+            setShowEnrollmentModal(false);
+            router.push(`/learning/${id}`);
+            
+            // Force refresh to update header
+            window.dispatchEvent(new Event('storage'));
+          } else {
+            throw new Error(response.data?.message || 'Failed to enroll in course');
+          }
+        } catch (error) {
+          console.error('Enrollment error:', error);
+          toast.error(error.response?.data?.message || 'Failed to enroll in course');
+        } finally {
+          setIsEnrolling(false);
+        }
       }
-      
-      toast.success("Enrollment successful!");
-      setShowEnrollmentModal(false);
-      router.push(`/learning/${id}`);
     } catch (err) {
-      toast.error(err?.response?.data?.msg || "Failed to complete enrollment");
+      console.error('Enrollment error:', err);
+      toast.error(err?.response?.data?.message || err.message || "Failed to complete enrollment. Please try again.");
     } finally {
       setIsEnrolling(false);
     }
@@ -540,23 +668,34 @@ export default function CourseDetailsPage() {
                     </div>
 
                     <div className="mt-6 space-y-3">
-                      <button
-                        onClick={handleEnrollClick}
-                        disabled={isEnrolling || showEnrollmentModal}
-                        className="w-full rounded-2xl bg-gradient-to-r from-yellow-400 via-orange-400 to-pink-500 px-6 py-3 text-base font-semibold text-black shadow-md transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {isEnrolling ? "Enrolling..." : "Enroll Now"}
-                      </button>
-                      <button
-                        onClick={handleAddToCart}
-                        disabled={isAddingToCart}
-                        className="group w-full rounded-2xl border border-gray-200 bg-white px-6 py-3 text-base font-semibold text-gray-800 transition-all duration-200 hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-                      >
-                        <span className="inline-flex items-center justify-center gap-2">
-                          <ShoppingCart className="h-5 w-5 text-orange-500 transition-transform group-hover:scale-105" />
-                          {isAddingToCart ? "Adding..." : "Add to Cart"}
-                        </span>
-                      </button>
+                      {isEnrolled ? (
+                        <Link
+                          href={`/learning/${id}`}
+                          className="block w-full rounded-2xl bg-gradient-to-r from-green-500 to-emerald-600 px-6 py-3 text-center text-base font-semibold text-white shadow-md transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2"
+                        >
+                          Go to Course
+                        </Link>
+                      ) : (
+                        <>
+                          <button
+                            onClick={handleEnrollClick}
+                            disabled={isEnrolling || showEnrollmentModal}
+                            className="w-full rounded-2xl bg-gradient-to-r from-yellow-400 via-orange-400 to-pink-500 px-6 py-3 text-base font-semibold text-black shadow-md transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isEnrolling ? "Enrolling..." : "Enroll Now"}
+                          </button>
+                          <button
+                            onClick={handleAddToCart}
+                            disabled={isAddingToCart}
+                            className="group w-full rounded-2xl border border-gray-200 bg-white px-6 py-3 text-base font-semibold text-gray-800 transition-all duration-200 hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                          >
+                            <span className="inline-flex items-center justify-center gap-2">
+                              <ShoppingCart className="h-5 w-5 text-orange-500 transition-transform group-hover:scale-105" />
+                              {isAddingToCart ? "Adding..." : "Add to Cart"}
+                            </span>
+                          </button>
+                        </>
+                      )}
                     </div>
 
                     <div className="mt-6 border-t border-gray-200 pt-6 dark:border-gray-700">
@@ -773,7 +912,10 @@ export default function CourseDetailsPage() {
                 </div>
               </div>
 
-              <form onSubmit={handlePaymentSubmit} className="p-6 pb-8">
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                handlePaymentSubmit(e);
+              }} className="p-6 pb-8">
                 {/* Payment Methods Section */}
                 <div className="space-y-4 mb-6">
                   <div className="flex items-center justify-between mb-3">
@@ -943,6 +1085,7 @@ export default function CourseDetailsPage() {
           </div>
         </div>
       )}
+      <ToastContainer />
     </div>
   );
 }

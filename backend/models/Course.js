@@ -68,4 +68,11 @@ const courseSchema = new Schema({
   
 }, { timestamps: true });
 
+// Static method to find by numeric ID
+courseSchema.statics.findById = async function(id) {
+  const numericId = Number(id);
+  if (isNaN(numericId)) return null;
+  return this.findOne({ _id: numericId });
+};
+
 module.exports = mongoose.model('Course', courseSchema);

@@ -137,6 +137,7 @@ app.use("/api/subcategories", require("./routes/subCategoryRoutes")); // subcate
 
 // Learning management routes
 app.use("/api/courses", require("./routes/courseRoutes")); // course management
+app.use("/api/enrollments", require("./routes/enrollmentRoutes")); // course enrollment routes
 
 // Coin management routes
 app.use("/api/coins", require("./routes/coinRoutes")); // coin management

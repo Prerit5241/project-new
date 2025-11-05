@@ -131,6 +131,12 @@ export const apiHelpers = {
     getAll: (params = {}) => api.get('/api/courses', { params }),
     getById: (id) => api.get(`/api/courses/${id}`),
     getFeatured: () => api.get('/api/courses/featured'),
+    getEnrollmentStatus: (courseId) => api.get(`/api/enrollments/status/${courseId}`),
+    enroll: (courseId) => api.post(`/api/enrollments/courses/${courseId}/enroll`),
+    getEnrolledCourses: () => api.get('/api/enrollments/users/me/courses'),
+    getCourseProgress: (courseId) => api.get(`/api/courses/${courseId}/progress`),
+    markLessonComplete: (courseId, moduleIndex, lessonIndex) => 
+      api.post(`/api/courses/${courseId}/modules/${moduleIndex}/lessons/${lessonIndex}/complete`),
   },
 
   // Cart
@@ -168,6 +174,18 @@ export const apiHelpers = {
       recentActivities: []
     }), // Mock stats since the endpoint doesn't exist yet
     logActivity: (data) => api.post('/api/activities/log', data),
+  },
+  
+  // Enrollments
+  enrollments: {
+    // Enroll in a course
+    create: (data) => api.post('/api/enrollments', data),
+    // Get user's enrollments
+    getMyEnrollments: () => api.get('/api/enrollments/me'),
+    // Get enrollment by ID
+    getById: (id) => api.get(`/api/enrollments/${id}`),
+    // Update enrollment status
+    updateStatus: (id, status) => api.put(`/api/enrollments/${id}/status`, { status }),
   },
 };
 

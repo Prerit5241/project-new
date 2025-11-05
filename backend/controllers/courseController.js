@@ -1,6 +1,7 @@
 // controllers/courseController.js
-const Course       = require('../models/Course');
-const Category     = require('../models/Category');
+const Course = require('../models/Course');
+const Category = require('../models/Category');
+const User = require('../models/User');
 const { getNextId } = require('../models/Counter');
 
 /* ─────────────── CREATE COURSE ─────────────── */
@@ -400,18 +401,37 @@ exports.markLessonComplete = async (req, res) => {
       });
     }
 
-    // TODO: Add lesson completion tracking to User model
-    // For now, we'll just return success
-    res.json({
+    // Mark lesson as completed for the user
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Check if already completed
+    const isCompleted = user.completedLessons.some(
+      l => l.lesson.toString() === lesson._id.toString()
+    );
+
+    if (!isCompleted) {
+      user.completedLessons.push({
+        lesson: lesson._id,
+        completedAt: new Date()
+      });
+      await user.save();
+    }
+
+    res.status(200).json({
       success: true,
       message: "Lesson marked as complete",
       lesson: {
+        _id: lesson._id,
         title: lesson.title,
-        moduleIndex,
-        lessonIndex
+        isCompleted: true
       }
     });
-
   } catch (err) {
     console.error('❌ Error marking lesson complete:', err);
     res.status(500).json({

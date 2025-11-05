@@ -327,52 +327,62 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
   }
 };
 
-userSchema.methods.enrollInCourse = async function(courseId, price) {
+userSchema.methods.enrollInCourse = async function(courseId, price, options = {}) {
   const numericCourseId = Number(courseId);
   const numericPrice = Number(price);
+  const { session } = options;
 
-  // Comprehensive validation
-  if (!Number.isInteger(numericCourseId) || numericCourseId <= 0) {
-    throw new Error('Invalid course ID: must be a positive integer');
-  }
-  
-  if (typeof numericPrice !== 'number' || numericPrice < 0 || !Number.isFinite(numericPrice)) {
-    throw new Error('Invalid price: must be a valid non-negative number');
-  }
-
-  // Check for existing enrollment
-  const existingEnrollment = this.enrolledCourses.find(
-    enrollment => enrollment.courseId === numericCourseId
-  );
-  
-  if (existingEnrollment) {
-    if (existingEnrollment.status === 'cancelled') {
-      // Reactivate cancelled enrollment
-      existingEnrollment.status = 'active';
-      existingEnrollment.lastAccessed = new Date();
-      return existingEnrollment;
-    } else {
-      throw new Error('Already enrolled in this course');
+  try {
+    // Comprehensive validation
+    if (!Number.isInteger(numericCourseId) || numericCourseId <= 0) {
+      throw new Error('Invalid course ID: must be a positive integer');
     }
+    
+    if (typeof numericPrice !== 'number' || numericPrice < 0 || !Number.isFinite(numericPrice)) {
+      throw new Error('Invalid price: must be a valid non-negative number');
+    }
+
+    // Check for existing enrollment
+    const existingEnrollment = this.enrolledCourses.find(
+      enrollment => enrollment.courseId === numericCourseId
+    );
+    
+    if (existingEnrollment) {
+      if (existingEnrollment.status === 'cancelled') {
+        // Reactivate cancelled enrollment
+        existingEnrollment.status = 'active';
+        existingEnrollment.lastAccessed = new Date();
+        await this.save(options);
+        return existingEnrollment;
+      } else {
+        throw new Error('Already enrolled in this course');
+      }
+    }
+
+    // Create new enrollment
+    const newEnrollment = {
+      courseId: numericCourseId,
+      enrolledAt: new Date(),
+      price: numericPrice,
+      progress: 0,
+      status: 'active',
+      completedLessons: [],
+      lastAccessed: new Date()
+    };
+
+    // Add to enrolledCourses array
+    this.enrolledCourses.push(newEnrollment);
+
+    // Save with options (which may include session)
+    await this.save(options);
+    
+    // Return the newly created enrollment
+    return this.enrolledCourses.find(e => e.courseId === numericCourseId);
+    
+  } catch (error) {
+    console.error('Error in enrollInCourse:', error);
+    throw error; // Re-throw to be handled by the caller
   }
-
-  // Create new enrollment
-  const newEnrollment = {
-    courseId: numericCourseId,
-    enrolledAt: new Date(),
-    price: numericPrice,
-    progress: 0,
-    status: 'active',
-    completedLessons: [],
-    lastAccessed: new Date()
-  };
-
-  // Add to enrolledCourses array
-  this.enrolledCourses.push(newEnrollment);
-
-  // Save and return
-  await this.save();
-  return newEnrollment;
 };
 
 userSchema.methods.isEnrolledIn = function(courseId) {
