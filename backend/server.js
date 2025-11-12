@@ -39,12 +39,18 @@ app.use(
       // allow any 10.x.x.x LAN IP
       if (/^http:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(origin)) return callback(null, true);
       
+      // allow any 172.16.0.0/12 range (172.16.0.0 - 172.31.255.255)
+      if (/^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(origin)) return callback(null, true);
+      
       // allow any 192.168.x.x LAN IP
       if (/^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(origin)) return callback(null, true);
 
       // allow frontend development servers
       if (/^http:\/\/localhost:3000$/.test(origin)) return callback(null, true);
       if (/^http:\/\/127\.0\.0\.1:3000$/.test(origin)) return callback(null, true);
+      
+      // Allow the specific IP that was being blocked
+      if (/^http:\/\/172\.26\.184\.199:3000$/.test(origin)) return callback(null, true);
 
       console.warn(`❌ CORS blocked origin: ${origin}`);
       return callback(new Error(`❌ CORS policy: Origin ${origin} is not allowed`), false);
@@ -145,6 +151,7 @@ app.use("/api/coins", require("./routes/coinRoutes")); // coin management
 // ===== Analytics and reporting routes =====
 app.use("/api/analytics", require("./routes/analyticsRoutes")); // Analytics dashboard
 app.use("/api/activities", require("./routes/activityRouter")); // Activity tracking and logs
+app.use("/api/transactions", require("./routes/transactionLogRoutes")); // Transaction logs
 
 // ===== Base health check =====
 app.get("/", (req, res) => {

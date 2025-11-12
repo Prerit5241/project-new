@@ -354,12 +354,12 @@ const TransactionsPage = () => {
                         <div className="flex items-center">
                           <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
                             <span className="text-blue-600 font-medium">
-                              {transaction.userName.charAt(0).toUpperCase()}
+                              {transaction.userName?.charAt(0).toUpperCase() || 'U'}
                             </span>
                           </div>
                           <div className="ml-4">
                             <div className="text-sm font-medium text-gray-900">
-                              {transaction.userName}
+                              {transaction.userName} (ID: {transaction.userId || 'N/A'})
                             </div>
                             <div className="text-sm text-gray-500">
                               {transaction.userEmail}
@@ -369,10 +369,10 @@ const TransactionsPage = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-{transaction.courseId ? `Course ID: ${transaction.courseId}` : transaction.courseName}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {transaction.referenceId || 'N/A'}
+                          {transaction.reason || (transaction.courseName ? `Enrolled in course: ${transaction.courseName}` : 'No course information')}
+                          {transaction.courseId && transaction.courseId !== 'N/A' && (
+                            <div className="text-xs text-gray-500 mt-1">Course ID: {transaction.courseId}</div>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -409,83 +409,83 @@ const TransactionsPage = () => {
                         </div>
                       </td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td 
-                      colSpan="6" 
-                      className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-500"
-                    >
-                      No transactions found
-                    </td>
-                  </tr>
-                )}
-                
-                {/* Pagination */}
-                {totalPages > 1 && (
-                  <tr>
-                    <td colSpan="6" className="px-6 py-4">
-                      <div className="flex justify-center space-x-2">
-                        <button
-                          onClick={() => paginate(1)}
-                          disabled={currentPage === 1}
-                          className={`px-3 py-1 rounded ${currentPage === 1 ? 'bg-gray-200 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'}`}
-                        >
-                          «
-                        </button>
-                        <button
-                          onClick={() => paginate(currentPage - 1)}
-                          disabled={currentPage === 1}
-                          className={`px-3 py-1 rounded ${currentPage === 1 ? 'bg-gray-200 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'}`}
-                        >
-                          ‹
-                        </button>
+                ))
+              ) : (
+                <tr>
+                  <td 
+                    colSpan="6" 
+                    className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-500"
+                  >
+                    No transactions found
+                  </td>
+                </tr>
+              )}
+              
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <tr>
+                  <td colSpan="6" className="px-6 py-4">
+                    <div className="flex justify-center space-x-2">
+                      <button
+                        onClick={() => paginate(1)}
+                        disabled={currentPage === 1}
+                        className={`px-3 py-1 rounded ${currentPage === 1 ? 'bg-gray-200 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'}`}
+                      >
+                        «
+                      </button>
+                      <button
+                        onClick={() => paginate(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className={`px-3 py-1 rounded ${currentPage === 1 ? 'bg-gray-200 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'}`}
+                      >
+                        ‹
+                      </button>
+                      
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        // Show page numbers around current page
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
                         
-                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                          // Show page numbers around current page
-                          let pageNum;
-                          if (totalPages <= 5) {
-                            pageNum = i + 1;
-                          } else if (currentPage <= 3) {
-                            pageNum = i + 1;
-                          } else if (currentPage >= totalPages - 2) {
-                            pageNum = totalPages - 4 + i;
-                          } else {
-                            pageNum = currentPage - 2 + i;
-                          }
-                          
-                          return (
-                            <button
-                              key={pageNum}
-                              onClick={() => paginate(pageNum)}
-                              className={`px-3 py-1 rounded ${currentPage === pageNum ? 'bg-blue-600 text-white' : 'bg-white text-blue-600 hover:bg-blue-100'}`}
-                            >
-                              {pageNum}
-                            </button>
-                          );
-                        })}
-                        
-                        <button
-                          onClick={() => paginate(currentPage + 1)}
-                          disabled={currentPage === totalPages}
-                          className={`px-3 py-1 rounded ${currentPage === totalPages ? 'bg-gray-200 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'}`}
-                        >
-                          ›
-                        </button>
-                        <button
-                          onClick={() => paginate(totalPages)}
-                          disabled={currentPage === totalPages}
-                          className={`px-3 py-1 rounded ${currentPage === totalPages ? 'bg-gray-200 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'}`}
-                        >
-                          »
-                        </button>
-                      </div>
-                      <div className="text-center mt-2 text-sm text-gray-600">
-                        Page {currentPage} of {totalPages}
-                      </div>
-                    </td>
-                  </tr>
-                )}
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => paginate(pageNum)}
+                            className={`px-3 py-1 rounded ${currentPage === pageNum ? 'bg-blue-600 text-white' : 'bg-white text-blue-600 hover:bg-blue-100'}`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                      
+                      <button
+                        onClick={() => paginate(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className={`px-3 py-1 rounded ${currentPage === totalPages ? 'bg-gray-200 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'}`}
+                      >
+                        ›
+                      </button>
+                      <button
+                        onClick={() => paginate(totalPages)}
+                        disabled={currentPage === totalPages}
+                        className={`px-3 py-1 rounded ${currentPage === totalPages ? 'bg-gray-200 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'}`}
+                      >
+                        »
+                      </button>
+                    </div>
+                    <div className="text-center mt-2 text-sm text-gray-600">
+                      Page {currentPage} of {totalPages}
+                    </div>
+                  </td>
+                </tr>
+              )}
               </tbody>
             </table>
           </div>

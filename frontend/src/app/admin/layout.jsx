@@ -12,9 +12,9 @@ const navigationItems = [
   { href: "/admin/courses", label: "Courses", icon: "🎓" },
   { href: "/admin/products", label: "Products", icon: "🛒" },
   { href: "/admin/users", label: "Users", icon: "👥" },
-  { href: "/admin/coins", label: "Coins", icon: "🪙" },
+  { href: "/admin/coins", label: "Coins", icon: "💰" },
+  { href: "/admin/transactions", label: "Transactions", icon: "💳" },
   { href: "/admin/analytics", label: "Analytics", icon: "📈" },
-  { href: "/admin/settings", label: "Settings", icon: "⚙️" },
 ];
 
 export default function AdminLayout({ children }) {

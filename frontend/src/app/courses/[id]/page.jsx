@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiHelpers } from "@/lib/api";
 import { useAuth } from "@/app/context/AuthContext";
 import { ShoppingCart, CheckCircle, Clock, Award, Users, Star, Play, BookOpen, ArrowLeft, X, CreditCard, Coins } from "lucide-react";
@@ -78,6 +78,29 @@ export default function CourseDetailsPage() {
   const [showEnrollmentModal, setShowEnrollmentModal] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('online'); // 'online' or 'credits'
   const [isEnrolled, setIsEnrolled] = useState(false);
+  const [showRefreshNotice, setShowRefreshNotice] = useState(false);
+  const searchParams = useSearchParams();
+
+  // One-time refresh after initial load
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const hasRefreshed = searchParams.get('refreshed') === 'true';
+    
+    if (!hasRefreshed) {
+      // Add refreshed=true to URL and reload
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.set('refreshed', 'true');
+      
+      // Show notice and refresh after 1 second
+      setShowRefreshNotice(true);
+      const timer = setTimeout(() => {
+        window.location.href = newUrl.toString();
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
 
   const persistCartItems = (items) => {
     if (typeof window === "undefined") return;
@@ -398,8 +421,13 @@ export default function CourseDetailsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
         <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-500 border-r-transparent" />
+        {showRefreshNotice && (
+          <div className="px-4 py-2 bg-blue-100 text-blue-700 rounded-md">
+            Loading latest data...
+          </div>
+        )}
       </div>
     );
   }
