@@ -283,9 +283,12 @@ export default function CoinPage() {
                   <h2 className="text-2xl font-black text-gray-800">Transaction History</h2>
                   <p className="text-sm text-gray-600 font-medium mt-1">Track all your coin activities</p>
                 </div>
-                <button className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 text-sm">
+                <Link 
+                  href="/student/transactions"
+                  className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 text-sm hover:opacity-90"
+                >
                   View All
-                </button>
+                </Link>
               </div>
             </div>
             

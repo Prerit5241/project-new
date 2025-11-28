@@ -157,11 +157,18 @@ exports.updateProduct = async (req, res) => {
     console.log("UPDATE PRODUCT - Incoming ID:", productId);
     console.log("UPDATE PRODUCT - Incoming body:", req.body);
 
-    if (isNaN(productId)) return res.status(400).json({ msg: "Invalid product ID" });
+    if (isNaN(productId)) {
+      return res.status(400).json({ success: false, message: "Invalid product ID" });
+    }
 
     const updates = { ...req.body };
-    if (updates.price !== undefined) updates.price = Number(updates.price);
+    
+    // Convert price to number if it exists
+    if (updates.price !== undefined) {
+      updates.price = Number(updates.price);
+    }
 
+    // Handle category update
     if (updates.category) {
       if (typeof updates.category === "string") {
         let categoryDoc = await Category.findOne({ name: updates.category.trim() });
@@ -172,19 +179,52 @@ exports.updateProduct = async (req, res) => {
         updates.category = categoryDoc._id;
       } else {
         const categoryDoc = await Category.findById(updates.category);
-        if (!categoryDoc) return res.status(400).json({ msg: "Category not found" });
+        if (!categoryDoc) {
+          return res.status(400).json({ success: false, message: "Category not found" });
+        }
       }
     }
 
+    // Handle subcategory update
     if (updates.subCategory) {
+      const categoryId = updates.category || (await Product.findById(productId).select('category')).category;
+      
       if (typeof updates.subCategory === "string") {
-        let subCategoryDoc = await SubCategory.findOne({ name: updates.subCategory.trim(), category: updates.category });
+        let subCategoryDoc = await SubCategory.findOne({ 
+          name: updates.subCategory.trim(), 
+          category: categoryId 
+        });
+        
         if (!subCategoryDoc) {
           const nextSubCategoryId = await getNextId("subcategories");
-          subCategoryDoc = await new SubCategory({ _id: nextSubCategoryId, name: updates.subCategory.trim(), category: updates.category }).save();
+          subCategoryDoc = await new SubCategory({ 
+            _id: nextSubCategoryId, 
+            name: updates.subCategory.trim(), 
+            category: categoryId 
+          }).save();
         }
         updates.subCategory = subCategoryDoc._id;
+      } else {
+        const subCategoryDoc = await SubCategory.findOne({ 
+          _id: updates.subCategory, 
+          category: categoryId 
+        });
+        if (!subCategoryDoc) {
+          return res.status(400).json({ 
+            success: false, 
+            message: "Subcategory does not belong to the specified category" 
+          });
+        }
       }
+    }
+
+    // Handle images - ensure it's an array
+    if (updates.images) {
+      if (!Array.isArray(updates.images)) {
+        updates.images = [updates.images];
+      }
+      // Filter out any empty or invalid image URLs
+      updates.images = updates.images.filter(img => img && typeof img === 'string' && img.trim() !== '');
     }
 
     const updatedProduct = await Product.findOneAndUpdate(
@@ -195,14 +235,24 @@ exports.updateProduct = async (req, res) => {
       .populate("category", "name description")
       .populate("subCategory", "name description");
 
-    if (!updatedProduct) return res.status(404).json({ msg: "Product not found" });
+    if (!updatedProduct) {
+      return res.status(404).json({ success: false, message: "Product not found" });
+    }
 
-    console.log("UPDATE PRODUCT - Sending to frontend:", updatedProduct);
+    console.log("UPDATE PRODUCT - Update successful:", updatedProduct);
+    res.json({ 
+      success: true, 
+      message: "Product updated successfully",
+      product: updatedProduct 
+    });
 
-    res.json(updatedProduct);
   } catch (err) {
     console.error("Error updating product:", err);
-    res.status(500).json({ msg: "Server error updating product", error: err.message });
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error updating product", 
+      error: err.message 
+    });
   }
 };
 

@@ -602,23 +602,29 @@ export default function Home() {
 
           {/* Action Buttons with Enhanced Effects */}
           <div className="flex justify-center gap-4 mt-6">
-            <Link
-              href="/courses"
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                document.getElementById('premium-ebooks')?.scrollIntoView({ behavior: 'smooth' });
+              }}
               className="relative inline-block px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-lg shadow-md transform transition duration-300 hover:scale-105 hover:from-yellow-500 hover:to-yellow-600 hover:shadow-lg group"
             >
               Get Started
               <span className="absolute inset-0 rounded-lg border-2 border-white opacity-0 transition duration-300 group-hover:opacity-25"></span>
               <Sparkles className="absolute -top-1 -right-1 w-3 h-3 text-yellow-200 opacity-0 group-hover:opacity-100 transition-opacity animate-spin" />
-            </Link>
+            </button>
 
-            <Link
-              href="/products"
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                document.getElementById('explore-categories').scrollIntoView({ behavior: 'smooth' });
+              }}
               className="relative inline-block px-6 py-2.5 text-sm font-semibold text-blue-600 bg-white rounded-lg shadow-sm border-2 border-orange-500 transform transition duration-300 hover:scale-105 hover:bg-orange-50 hover:shadow-md group"
             >
               Explore Courses
               <span className="absolute inset-0 rounded-lg opacity-0 transition duration-300 group-hover:opacity-25"></span>
               <BookOpen className="absolute -top-1 -right-1 w-3 h-3 text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity animate-bounce" />
-            </Link>
+            </button>
           </div>
 
           {/* Animated Stats - Fixed Height */}
@@ -646,7 +652,7 @@ export default function Home() {
       </section>
       
       {/* Categories Section - Same Background as Hero */}
-      <section className="py-16 bg-gray-50 dark:bg-gray-900">
+      <section id="explore-categories" className="py-16 bg-gray-50 dark:bg-gray-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
             Explore Categories
@@ -709,8 +715,8 @@ export default function Home() {
         </div>
       </div>
       
-      {/* Featured Courses */}
-      <section className="py-16 bg-white dark:bg-gray-800">
+      {/* Featured Products */}
+      <section id="premium-ebooks" className="py-16 bg-white dark:bg-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
             Enhance Your Knowledge with Premium eBooks

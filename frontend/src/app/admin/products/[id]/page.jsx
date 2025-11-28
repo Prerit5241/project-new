@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { apiHelpers } from "@/lib/api";
 import { toast } from "react-hot-toast";
+import axios from "axios";
+
 
 export default function EditProductPage() {
   const router = useRouter();
@@ -22,7 +24,7 @@ export default function EditProductPage() {
     featured: false,
     images: []
   });
-  const [imagePreviews, setImagePreviews] = useState([]);
+  const [imageUrl, setImageUrl] = useState("");
   const [existingImages, setExistingImages] = useState([]);
 
   // Load product and categories on mount
@@ -97,24 +99,7 @@ export default function EditProductPage() {
   }, [formData.category]);
 
   const handleChange = (e) => {
-    const { name, value, type, checked, files } = e.target;
-    
-    if (type === 'file') {
-      // Handle file uploads for new images
-      const newImages = Array.from(files).map(file => ({
-        file,
-        preview: URL.createObjectURL(file),
-        isNew: true
-      }));
-      
-      setImagePreviews(prev => [...prev, ...newImages]);
-      
-      setFormData(prev => ({
-        ...prev,
-        images: [...prev.images, ...files]
-      }));
-      return;
-    }
+    const { name, value, type, checked } = e.target;
     
     setFormData(prev => ({
       ...prev,
@@ -122,17 +107,35 @@ export default function EditProductPage() {
     }));
   };
 
+  const handleImageUrlChange = (e) => {
+    setImageUrl(e.target.value);
+  };
+
+  const addImageUrl = (e) => {
+    e.preventDefault();
+    if (!imageUrl.trim()) return;
+    
+    // Basic URL validation
+    try {
+      new URL(imageUrl);
+      
+      setFormData(prev => ({
+        ...prev,
+        images: [...prev.images, imageUrl.trim()]
+      }));
+      
+      setImageUrl("");
+    } catch (error) {
+      toast.error("Please enter a valid URL");
+    }
+  };
+
   const removeImage = (index, isExisting) => {
     if (isExisting) {
       // Mark existing image for removal (soft delete)
       setExistingImages(prev => prev.filter((_, i) => i !== index));
     } else {
-      // Remove new image that hasn't been uploaded yet
-      const newPreviews = [...imagePreviews];
-      URL.revokeObjectURL(newPreviews[index].preview);
-      newPreviews.splice(index, 1);
-      setImagePreviews(newPreviews);
-      
+      // Remove image from the form data
       const newImages = [...formData.images];
       newImages.splice(index, 1);
       setFormData(prev => ({
@@ -142,32 +145,139 @@ export default function EditProductPage() {
     }
   };
 
-  const handleSubmit = async (e) => {
+   // ...existing code...
+// ...existing code...
+
+   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    
+
     try {
-      const productData = {
-        ...formData,
-        price: Number(formData.price),
-        stock: Number(formData.stock),
-        // For existing images that weren't removed
-        existingImages: existingImages,
-        // New images will be processed by the backend
-        images: formData.images.map(img => img.name) // Just filenames for now
+      // Validate / normalize numeric fields
+      const priceNum = Number(formData.price);
+      if (!Number.isFinite(priceNum) || priceNum < 0) {
+        throw new Error("Please provide a valid non-negative price");
+      }
+      const stockNum = Number(formData.stock) || 0;
+
+      // Basic URL validator
+      const isValidUrl = (u) => {
+        try { new URL(u); return true; } catch { return false; }
       };
+
+      // Combine remaining existing images with any new images the admin added (only valid URLs)
+      const validExisting = Array.isArray(existingImages) ? existingImages.filter(isValidUrl) : [];
+      const validNew = Array.isArray(formData.images) ? formData.images.filter(isValidUrl) : [];
+      const combinedImages = [...validExisting, ...validNew].slice(0, 10); // limit to 10 images
+
+      // Build payload expected by backend: single `images` array
+      const productData = {
+        title: (formData.title || "").trim(),
+        description: (formData.description || "").trim(),
+        price: priceNum,
+        stock: stockNum,
+        category: formData.category || undefined,
+        subCategory: formData.subCategory || undefined,
+        brand: formData.brand?.trim() || undefined,
+        featured: Boolean(formData.featured),
+        images: combinedImages
+      };
+
+      // Remove undefined keys to avoid backend validation issues
+      Object.keys(productData).forEach((k) => {
+        if (productData[k] === undefined) delete productData[k];
+      });
+
+      console.log("Sending product data:", JSON.stringify(productData, null, 2));
+
+      let response;
+      try {
+        // Primary attempt: use existing json helper
+        console.log("Attempting JSON update...");
+        response = await apiHelpers.products.update(id, productData);
+        console.log("JSON update response:", response);
+      } catch (err) {
+        console.warn("JSON update failed:", {
+          status: err?.response?.status,
+          statusText: err?.response?.statusText,
+          data: err?.response?.data,
+          message: err.message
+        });
+
+        // If server returned 500, try multipart/form-data fallback
+        if (err?.response?.status === 500 || err?.response?.status === 400) {
+          const fd = new FormData();
+          Object.entries(productData).forEach(([k, v]) => {
+            if (v === undefined || v === null) return;
+            if (Array.isArray(v)) {
+              v.forEach((item) => item !== undefined && fd.append(k, item));
+            } else if (typeof v === 'object') {
+              fd.append(k, JSON.stringify(v));
+            } else {
+              fd.append(k, v);
+            }
+          });
+
+          console.log("Retrying update with multipart/form-data");
+          try {
+            response = await axios.put(`/api/products/${id}`, fd, {
+              headers: { 
+                'Content-Type': 'multipart/form-data',
+                'Accept': 'application/json'
+              }
+            });
+            console.log("Multipart update response:", response);
+          } catch (formDataErr) {
+            console.error("Multipart form-data update failed:", {
+              status: formDataErr?.response?.status,
+              statusText: formDataErr?.response?.statusText,
+              data: formDataErr?.response?.data,
+              message: formDataErr.message
+            });
+            throw formDataErr;
+          }
+        } else {
+          throw err;
+        }
+      }
+
+      // Handle successful response
+      const responseData = response?.data?.data || response?.data;
+      console.log("Response data:", responseData);
       
-      await apiHelpers.products.update(id, productData);
+      if (responseData?.success || response?.status === 200) {
+        toast.success(responseData?.message || "Product updated successfully!");
+        router.push("/admin/products");
+        return;
+      }
       
-      toast.success("Product updated successfully!");
-      router.push("/admin/products");
+      // If we get here, the request didn't fail but wasn't successful either
+      const errorMessage = responseData?.message || 
+                         response?.data?.message || 
+                         response?.statusText || 
+                         "Failed to update product";
+      console.error("Update failed with response:", {
+        status: response?.status,
+        statusText: response?.statusText,
+        data: response?.data,
+        responseData
+      });
+      throw new Error(errorMessage);
     } catch (error) {
       console.error("Error updating product:", error);
-      toast.error(error.message || "Failed to update product");
+      if (error?.response) {
+        console.error("Server response:", {
+          status: error.response.status,
+          data: error.response.data
+        });
+      }
+      const errorMessage = error?.response?.data?.message || error.message || "Failed to update product";
+      toast.error(errorMessage);
     } finally {
       setSaving(false);
     }
   };
+ // ...existing code...
 
   if (loading) {
     return (
@@ -322,44 +432,42 @@ export default function EditProductPage() {
                     </div>
                   )}
 
-                  {/* New Images */}
+                  {/* Add Image URL */}
                   <div>
-                    <h3 className="text-sm font-medium text-gray-700 mb-2">Add More Images</h3>
-                    <div className="flex items-center justify-center w-full">
-                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
-                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                          <svg className="w-8 h-8 mb-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                          </svg>
-                          <p className="mb-2 text-sm text-gray-500">
-                            <span className="font-semibold">Click to upload</span> or drag and drop
-                          </p>
-                          <p className="text-xs text-gray-500">PNG, JPG, JPEG (MAX. 10MB)</p>
-                        </div>
-                        <input 
-                          id="images" 
-                          name="images" 
-                          type="file" 
-                          className="hidden" 
-                          multiple 
-                          accept="image/*"
-                          onChange={handleChange}
-                        />
-                      </label>
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Add Image by URL</h3>
+                    <div className="flex space-x-2">
+                      <input
+                        type="text"
+                        value={imageUrl}
+                        onChange={handleImageUrlChange}
+                        placeholder="https://example.com/image.jpg"
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <button
+                        onClick={addImageUrl}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                      >
+                        Add
+                      </button>
                     </div>
+                    <p className="mt-1 text-xs text-gray-500">Enter the full URL of the image</p>
                   </div>
                   
                   {/* New Image Previews */}
-                  {imagePreviews.length > 0 && (
+                  {formData.images.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">New Images to Upload</h3>
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">New Images to Add</h3>
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                        {imagePreviews.map((img, index) => (
+                        {formData.images.map((img, index) => (
                           <div key={`new-${index}`} className="relative group">
                             <img 
-                              src={img.preview} 
+                              src={img} 
                               alt={`New ${index + 1}`} 
                               className="h-24 w-full object-cover rounded-lg border border-gray-200"
+                              onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.src = 'https://via.placeholder.com/150?text=Image+Not+Found';
+                              }}
                             />
                             <button
                               type="button"

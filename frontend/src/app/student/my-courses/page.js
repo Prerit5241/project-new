@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { apiHelpers } from "@/lib/api";
+import axios from "axios";
 import toast from "react-hot-toast";
 import {
   BookOpen,
@@ -87,9 +88,24 @@ export default function MyCoursesPage() {
       setError(null);
 
       try {
-        const response = await apiHelpers.users.getProfile();
-        const payload = response?.data?.data || response?.data?.student || response?.data || {};
-        const profile = payload?.student || payload;
+        const token = localStorage.getItem('token');
+        if (!token) {
+          throw new Error('No authentication token found');
+        }
+
+        // Use direct axios call with proper headers
+        const response = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/users/profile`,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            }
+          }
+        );
+        
+        const payload = response?.data?.data || response?.data || {};
+        const profile = payload.student || payload;
         const enrollmentList = Array.isArray(profile?.enrolledCourses) ? profile.enrolledCourses : [];
 
         setEnrollments(enrollmentList);
